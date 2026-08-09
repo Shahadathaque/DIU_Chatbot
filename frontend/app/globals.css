@@ -1,0 +1,127 @@
+@import "tailwindcss";
+
+:root {
+  --canvas: #f7f9f7;
+  --surface: #ffffff;
+  --ink: #15231d;
+  --muted: #5f6f67;
+  --line: #dfe7e2;
+  --brand: #08783f;
+  --brand-dark: #065b31;
+  --brand-soft: #e8f5ed;
+  --accent: #eab308;
+}
+
+@theme inline {
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-brand: var(--brand);
+  --color-brand-dark: var(--brand-dark);
+  --color-brand-soft: var(--brand-soft);
+  --color-accent: var(--accent);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --shadow-soft: 0 18px 55px rgba(18, 46, 33, 0.09);
+  --shadow-card: 0 8px 30px rgba(18, 46, 33, 0.07);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  background:
+    radial-gradient(circle at 6% 0%, rgba(8, 120, 63, 0.07), transparent 28rem),
+    var(--canvas);
+  color: var(--ink);
+  font-family: var(--font-geist-sans), var(--font-noto-bengali), sans-serif;
+}
+
+button,
+a,
+input,
+select,
+textarea {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button,
+a {
+  touch-action: manipulation;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 3px solid rgba(8, 120, 63, 0.25);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: rgba(8, 120, 63, 0.18);
+}
+
+.skip-link {
+  position: fixed;
+  left: 1rem;
+  top: -4rem;
+  z-index: 100;
+  border-radius: 0.75rem;
+  background: var(--brand-dark);
+  color: white;
+  padding: 0.75rem 1rem;
+  transition: top 150ms ease;
+}
+
+.skip-link:focus {
+  top: 1rem;
+}
+
+.page-shell {
+  width: min(1180px, calc(100% - 2rem));
+  margin-inline: auto;
+}
+
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--brand-dark);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.glass-panel {
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid rgba(223, 231, 226, 0.9);
+  box-shadow: var(--shadow-soft);
+  backdrop-filter: blur(18px);
+}
+
+.subtle-grid {
+  background-image:
+    linear-gradient(rgba(8, 120, 63, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(8, 120, 63, 0.035) 1px, transparent 1px);
+  background-size: 28px 28px;
+}
+
+.text-balance {
+  text-wrap: balance;
+}
+
+.bangla {
+  font-family: var(--font-noto-bengali), var(--font-geist-sans), sans-serif;
+}
+
+@media (max-width: 640px) {
+  .page-shell {
+    width: min(100% - 1.25rem, 1180px);
+  }
+}
