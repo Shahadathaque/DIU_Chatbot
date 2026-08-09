@@ -8,11 +8,6 @@ export function ProgramCard({ program }: { program: Program }) {
         <span className="grid size-11 place-items-center rounded-2xl bg-brand-soft text-brand">
           <GraduationIcon size={20} />
         </span>
-        {program.short_name ? (
-          <span className="rounded-full bg-canvas px-2.5 py-1 text-[10px] font-bold tracking-[0.08em] text-muted">
-            {program.short_name}
-          </span>
-        ) : null}
       </div>
 
       <h2 className="mt-5 text-lg font-bold tracking-[-0.02em] text-ink">
@@ -23,17 +18,6 @@ export function ProgramCard({ program }: { program: Program }) {
         {program.faculty ? <p>{program.faculty}</p> : null}
         {program.degree ? <p>{program.degree}</p> : null}
       </div>
-
-      {program.summary ? (
-        <p className="mt-4 flex-1 text-sm leading-6 text-muted">{program.summary}</p>
-      ) : null}
-
-      {program.admission_requirements ? (
-        <p className="mt-4 rounded-xl bg-canvas px-3 py-2 text-xs leading-5 text-ink">
-          <span className="font-bold">Requirements: </span>
-          {program.admission_requirements}
-        </p>
-      ) : null}
 
       {program.admission_url ? (
         <a

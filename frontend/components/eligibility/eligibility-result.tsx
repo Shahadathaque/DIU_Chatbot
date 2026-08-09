@@ -22,10 +22,7 @@ const statusCopy = {
 export function EligibilityResult({ result }: { result: EligibilityResponse }) {
   const status = statusCopy[result.status];
   const Icon = status.icon;
-  const source =
-    typeof result.source === "string"
-      ? { title: result.source, url: undefined }
-      : result.source;
+  const source = result.source;
 
   return (
     <article className={`rounded-[1.5rem] border p-6 sm:p-8 ${status.tone}`}>

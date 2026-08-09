@@ -29,8 +29,7 @@ const initialForm: EligibilityRequest = {
   ssc_gpa: 4.5,
   hsc_gpa: 4.0,
   group: "Science",
-  diploma_status: false,
-  additional_subject_result: "",
+  diploma: false,
 };
 
 export function EligibilityForm() {
@@ -53,11 +52,7 @@ export function EligibilityForm() {
     setResult(null);
 
     try {
-      const payload: EligibilityRequest = {
-        ...form,
-        additional_subject_result: form.additional_subject_result?.trim() || undefined,
-      };
-      const response = await checkEligibility(payload);
+      const response = await checkEligibility(form);
       setResult(response);
     } catch (requestError) {
       setError(
@@ -177,30 +172,11 @@ export function EligibilityForm() {
             </div>
           </div>
 
-          <div>
-            <label
-              className="mb-2 block text-xs font-bold uppercase tracking-[0.08em] text-muted"
-              htmlFor="additional_subject_result"
-            >
-              Additional subject results (optional)
-            </label>
-            <input
-              className="h-12 w-full rounded-xl border border-line bg-canvas px-4 text-sm font-semibold text-ink"
-              id="additional_subject_result"
-              onChange={(event) =>
-                updateField("additional_subject_result", event.target.value)
-              }
-              placeholder="e.g. Math A, Physics A-"
-              type="text"
-              value={form.additional_subject_result ?? ""}
-            />
-          </div>
-
           <label className="flex items-center gap-3 rounded-xl border border-line bg-canvas px-4 py-3 text-sm font-semibold text-ink">
             <input
-              checked={Boolean(form.diploma_status)}
+              checked={form.diploma}
               className="size-4 accent-[var(--brand)]"
-              onChange={(event) => updateField("diploma_status", event.target.checked)}
+              onChange={(event) => updateField("diploma", event.target.checked)}
               type="checkbox"
             />
             I am applying as a diploma student

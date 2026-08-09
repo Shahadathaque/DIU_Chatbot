@@ -23,6 +23,7 @@ describe("mock API fixtures", () => {
       ssc_gpa: 5,
       hsc_gpa: 5,
       group: "Science",
+      diploma: false,
     });
 
     expect(["eligible", "not_eligible", "insufficient_information"]).toContain(

@@ -1,5 +1,4 @@
-// Provisional frontend types based on the master prompt.
-// Reconcile these with contracts/api-contract.md when that shared contract is added.
+// Shared API types aligned with contracts/api-contract.md.
 
 export type Language = "en" | "bn" | "banglish";
 export type Confidence = "high" | "medium" | "low";
@@ -7,7 +6,6 @@ export type Confidence = "high" | "medium" | "low";
 export interface ApiSource {
   title: string;
   url: string;
-  excerpt?: string;
 }
 
 export interface ChatRequest {
@@ -17,17 +15,17 @@ export interface ChatRequest {
 
 export interface ChatResponse {
   answer: string;
-  sources?: ApiSource[];
-  confidence?: Confidence;
+  sources: ApiSource[];
+  confidence: Confidence;
+  language: Language;
 }
 
 export interface EligibilityRequest {
   program: string;
-  ssc_gpa: number;
-  hsc_gpa: number;
-  group: "Science" | "Business Studies" | "Humanities" | "Other";
-  diploma_status?: boolean;
-  additional_subject_result?: string;
+  ssc_gpa?: number;
+  hsc_gpa?: number;
+  group?: string;
+  diploma: boolean;
 }
 
 export type EligibilityStatus =
@@ -38,17 +36,14 @@ export type EligibilityStatus =
 export interface EligibilityResponse {
   status: EligibilityStatus;
   reason: string;
-  source?: ApiSource | string;
+  source?: ApiSource;
 }
 
 export interface Program {
   id: string;
   name: string;
-  short_name?: string;
   faculty?: string;
   degree?: string;
-  summary?: string;
-  admission_requirements?: string;
   admission_url?: string;
 }
 
@@ -57,5 +52,16 @@ export interface ProgramsResponse {
 }
 
 export interface HealthResponse {
-  status: string;
+  status: "ok";
+}
+
+export interface SourceRecord {
+  id: string;
+  title: string;
+  url: string;
+  retrieved_at?: string;
+}
+
+export interface SourcesResponse {
+  sources: SourceRecord[];
 }

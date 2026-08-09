@@ -50,7 +50,7 @@ export function ProgramsExperience() {
     const needle = query.trim().toLowerCase();
     if (!needle) return programs;
     return programs.filter((program) =>
-      [program.name, program.short_name, program.faculty, program.degree]
+      [program.name, program.faculty, program.degree]
         .filter(Boolean)
         .some((value) => value!.toLowerCase().includes(needle)),
     );

@@ -2,6 +2,7 @@ import {
   mockCheckBackendHealth,
   mockCheckEligibility,
   mockGetPrograms,
+  mockGetSources,
   mockSendChatMessage,
 } from "@/services/mock-api";
 import type {
@@ -11,6 +12,7 @@ import type {
   EligibilityResponse,
   HealthResponse,
   ProgramsResponse,
+  SourcesResponse,
 } from "@/types/api";
 
 const API_URL = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000").replace(
@@ -119,4 +121,15 @@ export function checkBackendHealth(): Promise<HealthResponse> {
   return isMockMode
     ? mockCheckBackendHealth()
     : request<HealthResponse>("/health");
+}
+
+export async function getSources(): Promise<SourcesResponse> {
+  const response = isMockMode
+    ? await mockGetSources()
+    : await request<SourcesResponse>("/api/sources");
+
+  if (!Array.isArray(response.sources)) {
+    throw new ApiError("The source service returned an invalid list.");
+  }
+  return response;
 }

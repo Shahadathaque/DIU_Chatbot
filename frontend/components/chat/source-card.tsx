@@ -17,11 +17,6 @@ export function SourceCard({ source, index }: { source: ApiSource; index: number
           <span className="truncate">{source.title}</span>
           <ExternalLinkIcon className="shrink-0" size={13} />
         </span>
-        {source.excerpt ? (
-          <span className="mt-1 line-clamp-2 block text-[11px] leading-5 text-muted">
-            {source.excerpt}
-          </span>
-        ) : null}
       </span>
     </a>
   );

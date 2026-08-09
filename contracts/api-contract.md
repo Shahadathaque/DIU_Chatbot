@@ -1,7 +1,7 @@
 # DIU Admission AI — API Contract
 
 Version: `0.1.0`  
-Status: Initial Phase 2 contract
+Status: Active shared contract
 
 This contract is the shared boundary between the FastAPI backend and the Next.js frontend. JSON examples below demonstrate structure only. They are not verified DIU admission facts.
 
@@ -221,5 +221,4 @@ Successful response (`200`; schema example only):
 
 ## Change policy
 
-Changes require coordination between both members. Prefer additive optional fields. Breaking changes require a contract version update and synchronized backend/frontend work.
-
+Changes require coordination across backend and frontend consumers. Prefer additive optional fields. Breaking changes require a contract version update and synchronized backend/frontend work.
