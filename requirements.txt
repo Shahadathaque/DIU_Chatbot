@@ -1,0 +1,29 @@
+# Web API and configuration
+fastapi==0.116.1
+uvicorn[standard]==0.35.0
+pydantic==2.11.7
+pydantic-settings==2.10.1
+
+# Data collection and preparation (reserved for later phases)
+playwright==1.54.0
+beautifulsoup4==4.13.4
+pandas==2.3.1
+scikit-learn==1.7.1
+
+# Model research (reserved for later phases)
+torch==2.7.1
+transformers==4.54.1
+datasets==4.0.0
+peft==0.17.0
+trl==0.20.0
+accelerate==1.9.0
+sentence-transformers==5.0.0
+
+# Database and vector storage (reserved for later phases)
+psycopg[binary]==3.2.9
+pgvector==0.4.1
+
+# Testing
+pytest==8.4.1
+httpx==0.28.1
+

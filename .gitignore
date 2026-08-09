@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+
+# Environment and credentials
+.env
+.env.*
+!**/.env.example
+
+# Data and model artifacts (retain directory placeholders)
+data/raw/*
+data/cleaned/*
+data/chunks/*
+data/finetuning/*
+data/evaluation/*
+results/figures/*
+!**/.gitkeep
+*.pt
+*.pth
+*.safetensors
+*.ckpt
+
+# Frontend-generated files
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/.env.local
+
+# Editors and operating systems
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Notebooks
+.ipynb_checkpoints/

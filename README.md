@@ -1,1 +1,81 @@
-# ai_diuChatbot
+# DIU Admission AI
+
+DIU Admission AI is a university research project investigating a domain-specific, fine-tuned language model with retrieval-augmented generation for Daffodil International University admission assistance. The system is a research prototype, not an official source of admission decisions.
+
+## Research architecture
+
+```text
+DIU official website
+  -> data collection and cleaning
+  -> DIU admission dataset
+  -> fine-tuned LLM + RAG vector database + eligibility rule engine
+  -> FastAPI backend
+  -> Next.js frontend
+```
+
+Later experiments will compare a base LLM, fine-tuned LLM, base LLM with RAG, and fine-tuned LLM with RAG. Phase 2 creates scaffolding only; it does not implement those systems or include admission data.
+
+## Ownership
+
+Member 1 owns:
+
+- `backend/`
+- `scraper/`
+- `rag/`
+- `training/`
+- `evaluation/`
+- `data/`
+- `results/`
+- `scripts/`
+- `notebooks/`
+- `tests/`
+- `docs/backend/`
+- `contracts/` (coordinated shared contract)
+
+Member 2 owns `frontend/` and `docs/frontend/`. **Member 1 must not modify frontend implementation files.** Cross-boundary integration must follow [`contracts/api-contract.md`](contracts/api-contract.md).
+
+## Directory structure
+
+```text
+backend/          FastAPI application, configuration, services, and models
+contracts/        Shared frontend/backend API contract
+data/             Raw, cleaned, chunked, fine-tuning, and evaluation data
+docs/             Member-specific documentation
+evaluation/       Evaluation code (later phase)
+frontend/         Next.js client owned by Member 2
+notebooks/        Research notebooks (later phase)
+rag/              Retrieval pipeline (later phase)
+results/          Generated research outputs (later phase)
+scraper/          Data collection code (later phase)
+scripts/          Project utilities (later phase)
+tests/            Backend tests
+training/         Model training code (later phase)
+```
+
+## Member 1 setup
+
+Python 3.11 is recommended. Dependencies are managed with the pinned root `requirements.txt`.
+
+```bash
+python3.11 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+cp .env.example .env
+uvicorn backend.main:app --reload
+```
+
+Verify the service at `GET http://127.0.0.1:8000/health` or run tests:
+
+```bash
+pytest
+```
+
+## Environment
+
+Copy `.env.example` to `.env` and set local values as later phases require. Never commit `.env`, Hugging Face tokens, database credentials, model weights, or generated datasets.
+
+## Current status
+
+Phase 2 repository and backend scaffolding is complete. Only `GET /health` is implemented. Chat, eligibility, program, and source endpoints are documented but intentionally unimplemented. Scraping, RAG, embeddings, training, and evaluation begin only in later approved phases.
+
