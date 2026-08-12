@@ -8,12 +8,15 @@ DIU Admission AI is a university research project investigating a domain-specifi
 DIU official website
   -> data collection and cleaning
   -> DIU admission dataset
-  -> fine-tuned LLM + RAG vector database + eligibility rule engine
+  -> verified chunks + multilingual embeddings + pgvector retrieval
+  -> later LLM generation and eligibility logic
   -> FastAPI backend
   -> Next.js frontend
 ```
 
-Later experiments will compare a base LLM, fine-tuned LLM, base LLM with RAG, and fine-tuned LLM with RAG. Phase 2 creates scaffolding only; it does not implement those systems or include admission data.
+Later experiments will compare a base LLM, fine-tuned LLM, base LLM with RAG,
+and fine-tuned LLM with RAG. The current step implements retrieval only; LLM
+generation and fine-tuning remain unimplemented.
 
 ## Ownership
 
@@ -44,10 +47,10 @@ docs/             Member-specific documentation
 evaluation/       Evaluation code (later phase)
 frontend/         Next.js client owned by Member 2
 notebooks/        Research notebooks (later phase)
-rag/              Retrieval pipeline (later phase)
+rag/              Knowledge-base chunking, embeddings, storage, and retrieval
 results/          Generated research outputs (later phase)
-scraper/          Data collection code (later phase)
-scripts/          Project utilities (later phase)
+scraper/          Controlled web collection code
+scripts/          Project CLI utilities
 tests/            Backend tests
 training/         Model training code (later phase)
 ```
@@ -82,8 +85,13 @@ feeds 18 traceable cleaned records under `data/cleaned/v1/`; embedded PDF text,
 reliable tables, source currency states, manual-review states, hashes, and complete
 raw lineage are preserved. Validation passes, while the cleaned dataset remains
 truthfully partial because the BBA page is a non-substantive shell and the captured
-noticeboard has no admission-related entry. RAG, embeddings, training, eligibility
+noticeboard has no admission-related entry. LLM generation, training, eligibility
 logic, and evaluation have not begun.
+
+The retrieval layer now converts that immutable snapshot into traceable,
+structure-aware evidence chunks and supports authority-gated semantic retrieval.
+Production storage is PostgreSQL + pgvector; a JSON store exists only for local
+development. No LLM generation or chat endpoint is connected yet.
 
 Run a no-network selection check or a small controlled collection with:
 
@@ -117,3 +125,12 @@ remaining gaps. See
 for the Phase 5 method, measured statistics, flags, and readiness decision.
 Generated raw and cleaned artifacts are ignored by Git; retain them in backed-up
 research storage together with their manifests.
+
+Build or search the retrieval index after completing the PostgreSQL setup in
+[`docs/backend/rag_retrieval.md`](docs/backend/rag_retrieval.md):
+
+```bash
+python scripts/build_knowledge_base.py --dry-run
+python scripts/build_knowledge_base.py
+python scripts/search_knowledge.py "What documents are required for DIU admission?"
+```
