@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from types import SimpleNamespace
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import pytest
 
@@ -17,7 +17,7 @@ from scraper.extractor import extract_fetch_result, extract_html, extract_pdf
 from scraper.fetcher import FetchConfig, FetchResult, fetch_source
 from scraper.html_fetcher import fetch_html
 from scraper.pdf_fetcher import fetch_pdf
-from scraper.playwright_fetcher import fetch_dynamic_html
+from scraper.playwright_fetcher import _route_registered_origin, fetch_dynamic_html
 
 
 class FakeRequestException(Exception):
@@ -78,6 +78,7 @@ class FakeRequests:
 class FakeSource:
     url: str
     dynamic_page: bool = False
+    approved_dependency_urls: Tuple[str, ...] = ()
 
     @property
     def is_pdf(self) -> bool:
@@ -264,7 +265,10 @@ def test_source_dispatch_uses_registry_classification(monkeypatch: Any) -> None:
     )
     monkeypatch.setattr(
         "scraper.playwright_fetcher.fetch_dynamic_html",
-        lambda url, config: calls.append(("dynamic", url, config)) or sentinel,
+        lambda url, config, **kwargs: calls.append(
+            ("dynamic", url, config, kwargs)
+        )
+        or sentinel,
     )
     monkeypatch.setattr(
         "scraper.html_fetcher.fetch_html",
@@ -275,6 +279,80 @@ def test_source_dispatch_uses_registry_classification(monkeypatch: Any) -> None:
     assert fetch_source(FakeSource("https://example.test/app", True)) is sentinel
     assert fetch_source(FakeSource("https://example.test/page", False)) is sentinel
     assert [call[0] for call in calls] == ["pdf", "dynamic", "static"]
+
+
+class FakeRoutedRequest:
+    def __init__(
+        self,
+        url: str,
+        *,
+        method: str = "GET",
+        resource_type: str = "xhr",
+        navigation: bool = False,
+    ) -> None:
+        self.url = url
+        self.method = method
+        self.resource_type = resource_type
+        self._navigation = navigation
+
+    def is_navigation_request(self) -> bool:
+        return self._navigation
+
+
+class FakeRoute:
+    def __init__(self, request: FakeRoutedRequest) -> None:
+        self.request = request
+        self.action = None
+
+    def continue_(self) -> None:
+        self.action = "continued"
+
+    def abort(self) -> None:
+        self.action = "aborted"
+
+
+@pytest.mark.parametrize(
+    ("url", "method", "resource_type", "navigation", "expected"),
+    [
+        ("https://api.example.test/v1/notices", "GET", "xhr", False, "continued"),
+        ("https://api.example.test/v1/other", "GET", "xhr", False, "aborted"),
+        ("https://api.example.test/v1/notices", "POST", "xhr", False, "aborted"),
+        ("https://api.example.test/v1/notices", "GET", "document", True, "aborted"),
+    ],
+)
+def test_dynamic_dependency_boundary_is_exact_read_only_and_non_navigation(
+    url: str,
+    method: str,
+    resource_type: str,
+    navigation: bool,
+    expected: str,
+) -> None:
+    approved = frozenset({"https://api.example.test/v1/notices"})
+    observed = set()
+    blocked = set()
+    route = FakeRoute(
+        FakeRoutedRequest(
+            url,
+            method=method,
+            resource_type=resource_type,
+            navigation=navigation,
+        )
+    )
+
+    _route_registered_origin(
+        route,
+        "https://example.test/app",
+        blocked,
+        approved,
+        observed,
+    )
+
+    assert route.action == expected
+    assert observed == (
+        {"https://api.example.test/v1/notices"}
+        if expected == "continued"
+        else set()
+    )
 
 
 class FakePlaywrightTimeout(Exception):
@@ -320,6 +398,12 @@ class FakePage:
 
     def content(self) -> str:
         return "<html><body>Rendered admission content</body></html>"
+
+    def evaluate(self, script: str) -> List[str]:
+        self.evaluate_script = script
+        if "data-capture-shadow-root" in script:
+            return 1  # type: ignore[return-value]
+        return ["input:csrf_token"]
 
     def close(self) -> None:
         self.closed = True
@@ -415,6 +499,8 @@ def test_dynamic_fetch_captures_rendered_dom_with_bounded_idle_wait(
     assert page.timeouts == [50]
     assert page.closed is True
     assert result.browser_version == "139.0-test"
+    assert result.redactions == ("input:csrf_token",)
+    assert result.materialized_shadow_roots == 1
     browser = playwright.chromium.browser
     assert browser.context_options["service_workers"] == "block"
 
@@ -429,6 +515,33 @@ def test_dynamic_fetch_captures_rendered_dom_with_bounded_idle_wait(
     handler(web_socket)
     assert pattern == "**/*"
     assert web_socket.close_options["code"] == 1008
+
+
+def test_dynamic_fetch_rejects_client_side_navigation_after_settle(
+    monkeypatch: Any,
+) -> None:
+    playwright = FakePlaywright()
+    page = playwright.chromium.browser.context.page
+
+    def change_client_url(timeout: int) -> None:
+        page.timeouts.append(timeout)
+        page.url = "https://example.test/unregistered-client-route"
+
+    page.wait_for_timeout = change_client_url  # type: ignore[method-assign]
+    monkeypatch.setattr(
+        "scraper.playwright_fetcher._load_playwright",
+        lambda: (
+            lambda: FakePlaywrightManager(playwright),
+            FakePlaywrightError,
+            FakePlaywrightTimeout,
+        ),
+    )
+
+    with pytest.raises(FetchError, match="client-side navigation"):
+        fetch_dynamic_html(
+            "https://example.test/app",
+            FetchConfig(max_retries=0, playwright_settle_ms=1),
+        )
 
 
 def test_html_extraction_is_lightweight_and_keeps_document_sections() -> None:

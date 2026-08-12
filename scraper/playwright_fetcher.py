@@ -26,7 +26,10 @@ LOGGER = logging.getLogger(__name__)
 
 
 def fetch_dynamic_html(
-    url: str, config: Optional[FetchConfig] = None
+    url: str,
+    config: Optional[FetchConfig] = None,
+    *,
+    approved_dependency_urls: Tuple[str, ...] = (),
 ) -> FetchResult:
     """Render one dynamic URL in headless Chromium and return the final DOM.
 
@@ -37,6 +40,12 @@ def fetch_dynamic_html(
 
     resolved = coerce_fetch_config(config)
     candidate = _validate_public_url(url)
+    approved_dependencies = tuple(
+        dict.fromkeys(
+            canonicalize_url(_validate_public_url(value))
+            for value in approved_dependency_urls
+        )
+    )
     sync_playwright, playwright_error, playwright_timeout = _load_playwright()
 
     try:
@@ -65,10 +74,15 @@ def fetch_dynamic_html(
                     service_workers="block",
                 )
                 blocked_origins = set()
+                observed_dependencies = set()
                 context.route(
                     "**/*",
                     lambda route: _route_registered_origin(
-                        route, candidate, blocked_origins
+                        route,
+                        candidate,
+                        blocked_origins,
+                        frozenset(approved_dependencies),
+                        observed_dependencies,
                     ),
                 )
                 # WebSockets use a separate Playwright routing API and are not
@@ -90,6 +104,8 @@ def fetch_dynamic_html(
                         playwright_timeout,
                         blocked_origins,
                         getattr(browser, "version", None),
+                        approved_dependencies,
+                        observed_dependencies,
                     )
                 finally:
                     context.close()
@@ -115,6 +131,8 @@ def _navigate_with_retries(
     playwright_timeout: Any,
     blocked_origins: set[str],
     browser_version: Optional[str],
+    approved_dependency_urls: Tuple[str, ...],
+    observed_dependency_urls: set[str],
 ) -> FetchResult:
     attempts = config.max_retries + 1
 
@@ -194,6 +212,18 @@ def _navigate_with_retries(
                 )
 
             _wait_for_stable_dom(page, config, playwright_timeout)
+            if canonicalize_url(page.url) != canonicalize_url(url):
+                raise _fetch_error(
+                    "playwright blocked client-side navigation outside the registered canonical URL",
+                    url=url,
+                    fetch_method="playwright",
+                    status_code=status_code,
+                    final_url=page.url,
+                    redirect_chain=_redirect_chain(response),
+                    attempts=attempt,
+                )
+            materialized_shadow_roots = _materialize_open_shadow_roots(page)
+            redactions = _redact_sensitive_dom_values(page)
             rendered_dom = page.content().encode("utf-8")
             if len(rendered_dom) > config.max_response_bytes:
                 raise _fetch_error(
@@ -223,6 +253,10 @@ def _navigate_with_retries(
                 attempts=attempt,
                 blocked_origins=tuple(sorted(blocked_origins)),
                 browser_version=browser_version,
+                approved_dependency_urls=approved_dependency_urls,
+                observed_dependency_urls=tuple(sorted(observed_dependency_urls)),
+                redactions=redactions,
+                materialized_shadow_roots=materialized_shadow_roots,
             )
         except FetchError:
             raise
@@ -261,7 +295,11 @@ def _navigate_with_retries(
 
 
 def _route_registered_origin(
-    route: Any, registered_url: str, blocked_origins: set[str]
+    route: Any,
+    registered_url: str,
+    blocked_origins: set[str],
+    approved_dependency_urls: frozenset[str] = frozenset(),
+    observed_dependency_urls: Optional[set[str]] = None,
 ) -> None:
     request = route.request
     requested_url = request.url
@@ -274,12 +312,21 @@ def _route_registered_origin(
     requested_origin = (parts.scheme.lower(), parts.netloc.lower())
     registered_origin = (registered.scheme.lower(), registered.netloc.lower())
     resource_type = getattr(request, "resource_type", "")
+    method = str(getattr(request, "method", "GET")).upper()
     is_navigation = bool(request.is_navigation_request())
-    allowed = requested_origin == registered_origin
+    safe_read = method in {"GET", "HEAD"}
+    requested_canonical = canonicalize_url(requested_url)
+    allowed = requested_origin == registered_origin and safe_read
     if is_navigation:
-        allowed = allowed and canonicalize_url(requested_url) == canonicalize_url(
-            registered_url
-        )
+        allowed = allowed and requested_canonical == canonicalize_url(registered_url)
+    elif (
+        safe_read
+        and resource_type in {"fetch", "xhr"}
+        and requested_canonical in approved_dependency_urls
+    ):
+        allowed = True
+        if observed_dependency_urls is not None:
+            observed_dependency_urls.add(requested_canonical)
     blocked_nonessential = resource_type in {"image", "media", "font"}
     if blocked_nonessential:
         allowed = False
@@ -312,6 +359,73 @@ def _block_web_socket(web_socket: Any, blocked_origins: set[str]) -> None:
         code=1008,
         reason="WebSockets are disabled during controlled collection",
     )
+
+
+def _redact_sensitive_dom_values(page: Any) -> Tuple[str, ...]:
+    """Blank anonymous security-token values before serializing rendered DOM.
+
+    This is a privacy/safety boundary, not Phase 5 content cleaning. The stored
+    capture is already a browser-produced DOM representation rather than wire
+    bytes, and each affected field name is recorded in provenance.
+    """
+
+    values = page.evaluate(
+        r"""
+        () => {
+          const sensitive = /(^|[_-])(csrf|xsrf|authenticity|nonce|token)($|[_-])/i;
+          const redacted = [];
+          for (const element of document.querySelectorAll('input, meta')) {
+            const identifiers = [
+              element.getAttribute('name') || '',
+              element.getAttribute('id') || '',
+              element.getAttribute('property') || '',
+              element.getAttribute('http-equiv') || ''
+            ];
+            if (!identifiers.some((value) => sensitive.test(value))) continue;
+            const attribute = element.tagName === 'META' ? 'content' : 'value';
+            if (!element.hasAttribute(attribute)) continue;
+            if (element.tagName === 'INPUT') element.value = '';
+            element.setAttribute(attribute, '');
+            redacted.push(`${element.tagName.toLowerCase()}:${identifiers.find(Boolean) || attribute}`);
+          }
+          const assignment = /((?:csrf|xsrf|authenticity|access|refresh)[_-]?token\s*[:=]\s*['"])[^'"]+(['"])/gi;
+          for (const script of document.querySelectorAll('script')) {
+            const before = script.textContent || '';
+            const after = before.replace(assignment, '$1$2');
+            if (after !== before) {
+              script.textContent = after;
+              redacted.push('script:security-token-assignment');
+            }
+          }
+          return [...new Set(redacted)].sort();
+        }
+        """
+    )
+    if not isinstance(values, list):
+        return ()
+    return tuple(str(value) for value in values if str(value).strip())
+
+
+def _materialize_open_shadow_roots(page: Any) -> int:
+    """Copy readable open-shadow content into the serialized DOM capture."""
+
+    value = page.evaluate(
+        """
+        () => {
+          let count = 0;
+          for (const host of document.querySelectorAll('*')) {
+            if (!host.shadowRoot) continue;
+            const capture = document.createElement('div');
+            capture.setAttribute('data-capture-shadow-root', 'open');
+            capture.innerHTML = host.shadowRoot.innerHTML;
+            host.appendChild(capture);
+            count += 1;
+          }
+          return count;
+        }
+        """
+    )
+    return value if isinstance(value, int) and value >= 0 else 0
 
 
 def _redirect_chain(response: Any) -> Tuple[str, ...]:

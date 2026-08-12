@@ -8,11 +8,13 @@ from types import SimpleNamespace
 
 from scraper.fetcher import FetchResult
 from scraper.runner import RunConfig, run_collection
+from scripts.validate_raw_dataset import validate_dataset
 
 
 REGISTRY_HEADER = (
     "source_id,url,page_title,category,program,faculty,priority,dynamic_page,"
-    "date_sensitive,scrape_status,last_checked,notes\n"
+    "date_sensitive,currency_status,scrape_status,last_checked,"
+    "approved_dependency_urls,notes\n"
 )
 
 
@@ -20,8 +22,8 @@ def _registry(tmp_path: Path) -> Path:
     path = tmp_path / "registry.csv"
     path.write_text(
         REGISTRY_HEADER
-        + "S-1,https://example.com/one,One,overview,,,high,false,true,verified,2026-01-01,\n"
-        + "S-2,https://example.com/two,Two,overview,,,high,false,true,verified,2026-01-01,\n",
+        + "S-1,https://example.com/one,One,overview,,,high,false,true,uncertain,active,2026-01-01,,\n"
+        + "S-2,https://example.com/two,Two,overview,,,high,false,true,uncertain,active,2026-01-01,,\n",
         encoding="utf-8",
     )
     return path
@@ -102,3 +104,74 @@ def test_collection_isolates_failure_and_sanitizes_headers(
     assert record["content_hash"]
     assert record["source_url"] == "https://example.com/two"
     assert "set-cookie" not in record["response_headers"]
+
+
+def test_runner_reviews_every_exact_declared_dependency(tmp_path: Path, monkeypatch) -> None:
+    registry = tmp_path / "registry.csv"
+    dependency = "https://api.example.com/v1/notices"
+    registry.write_text(
+        REGISTRY_HEADER
+        + "S-1,https://example.com/one,One,overview,,,high,true,true,"
+        + f"current_date_sensitive,active,2026-01-01,{dependency},\n",
+        encoding="utf-8",
+    )
+    reviewed = []
+
+    class FakeRobotsChecker:
+        def __init__(self, **kwargs) -> None:
+            self.reviews = {}
+
+        def review(self, url: str):
+            reviewed.append(url)
+            return SimpleNamespace(allowed=True, outcome="allowed")
+
+        def close(self) -> None:
+            return None
+
+    def fake_fetch(source, config):
+        return FetchResult(
+            body=b"<!doctype html><html><body>Admission</body></html>",
+            fetch_method="playwright",
+            status_code=200,
+            final_url=source.url,
+            mime_type="text/html",
+            headers={"content-type": "text/html"},
+            rendered=True,
+            approved_dependency_urls=source.approved_dependency_urls,
+            observed_dependency_urls=source.approved_dependency_urls,
+        )
+
+    monkeypatch.setattr("scraper.fetcher.fetch_source", fake_fetch)
+    monkeypatch.setattr("scraper.policy.RobotsChecker", FakeRobotsChecker)
+    monkeypatch.setattr("scraper.rate_limit.HostRateLimiter.wait", lambda self, url: 0.0)
+    monkeypatch.setattr("scraper.rate_limit.HostRateLimiter.mark", lambda self, url: None)
+
+    output = tmp_path / "raw"
+    summary = run_collection(
+        RunConfig(
+            registry_path=registry,
+            output_root=output,
+            project_root=tmp_path,
+            allowed_host_suffixes=("example.com",),
+            minimum_delay_seconds=0,
+            maximum_delay_seconds=0,
+            max_retries=0,
+            dataset_version="v1",
+        )
+    )
+
+    assert reviewed == ["https://example.com/one", dependency]
+    assert summary.successful == 1
+    assert summary.dataset_status == "complete"
+    record = json.loads(
+        (output / summary.results[0]["record_path"]).read_text(encoding="utf-8")
+    )
+    assert record["raw_dataset_version"] == "v1"
+    assert record["observed_dependency_urls"] == [dependency]
+    validation = validate_dataset(
+        output_root=output,
+        registry_path=registry,
+        dataset_version="v1",
+    )
+    assert validation["integrity_status"] == "passed"
+    assert validation["counts"]["successful"] == 1

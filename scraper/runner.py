@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import math
 import platform
+import re
 import subprocess
 import sys
 import time
@@ -21,10 +22,11 @@ from scraper.storage import RawStore
 from scraper.utils import canonicalize_url, sha256_bytes, sha256_text, utc_now_iso
 
 
-COLLECTOR_VERSION = "phase4-1.0"
+COLLECTOR_VERSION = "phase4.1-1.0"
 LOGGER = logging.getLogger(__name__)
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_ALLOWED_HOST_SUFFIXES = ("daffodilvarsity.edu.bd",)
+DATASET_VERSION_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 
 
 @dataclass(frozen=True)
@@ -49,6 +51,7 @@ class RunConfig:
     request_timeout_seconds: float = 30.0
     playwright_timeout_ms: int = 30_000
     max_retries: int = 2
+    dataset_version: Optional[str] = None
     debug: bool = False
 
     def __post_init__(self) -> None:
@@ -71,6 +74,12 @@ class RunConfig:
             raise ValueError("max retries must be between 0 and 5")
         if not self.allowed_host_suffixes:
             raise ValueError("at least one authoritative host suffix is required")
+        if self.dataset_version is not None and not DATASET_VERSION_PATTERN.fullmatch(
+            self.dataset_version
+        ):
+            raise ValueError(
+                "dataset version must contain only letters, digits, dots, underscores, and hyphens"
+            )
 
 
 @dataclass
@@ -94,6 +103,8 @@ class RunSummary:
     robots_reviews: List[Dict[str, Any]] = field(default_factory=list)
     manifest_path: Optional[str] = None
     log_path: Optional[str] = None
+    raw_dataset_version: Optional[str] = None
+    dataset_status: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -110,18 +121,25 @@ def select_sources(config: RunConfig) -> List[SourceRecord]:
         url=config.urls or None,
         limit=config.limit,
     )
+    sources = [
+        source
+        for source in sources
+        if source.scrape_status in {"active", "manual_review"}
+    ]
     if not sources:
         raise RegistryError("No registry sources matched the requested filters")
     for source in sources:
-        host = (urlsplit(source.url).hostname or "").casefold()
-        if not any(
-            host == suffix.casefold()
-            or host.endswith("." + suffix.casefold())
-            for suffix in config.allowed_host_suffixes
-        ):
-            raise RegistryError(
-                f"Source {source.source_id} is outside the authoritative DIU host boundary"
-            )
+        for boundary_url in (source.url, *source.approved_dependency_urls):
+            host = (urlsplit(boundary_url).hostname or "").casefold()
+            if not any(
+                host == suffix.casefold()
+                or host.endswith("." + suffix.casefold())
+                for suffix in config.allowed_host_suffixes
+            ):
+                raise RegistryError(
+                    f"Source {source.source_id} declares a URL outside the "
+                    "authoritative DIU host boundary"
+                )
     return sources
 
 
@@ -136,6 +154,7 @@ def run_collection(config: RunConfig) -> RunSummary:
         started_at=started_at,
         selected=len(sources),
         dry_run=config.dry_run,
+        raw_dataset_version=config.dataset_version,
     )
     store = RawStore(config.output_root)
 
@@ -210,14 +229,20 @@ def run_collection(config: RunConfig) -> RunSummary:
             LOGGER.info("FETCH %s via %s", source.source_id, expected_method)
 
             try:
-                review = robots.review(source.url)
-                if not review.allowed:
-                    raise FetchError(
-                        "Collection stopped because robots guidance was "
-                        f"{review.outcome}",
-                        url=source.url,
-                        method=expected_method,
-                    )
+                for policy_url in (source.url, *source.approved_dependency_urls):
+                    review = robots.review(policy_url)
+                    if not review.allowed:
+                        scope = (
+                            "source"
+                            if policy_url == source.url
+                            else "declared browser dependency"
+                        )
+                        raise FetchError(
+                            f"Collection stopped because {scope} robots guidance was "
+                            f"{review.outcome}",
+                            url=policy_url,
+                            method=expected_method,
+                        )
                 result = fetch_source(source, fetch_config)
                 retrieved_at = utc_now_iso()
                 extracted = _extract(result)
@@ -232,6 +257,7 @@ def run_collection(config: RunConfig) -> RunSummary:
                     run_id=run_id,
                     content_kind=content_kind,
                     content_hash=content_hash,
+                    dataset_version=config.dataset_version,
                 )
                 outcome = store.store_success(
                     document_id=source.document_id,
@@ -262,6 +288,16 @@ def run_collection(config: RunConfig) -> RunSummary:
                         "duplicate_record": outcome.duplicate_record,
                         "attempts": result.attempts,
                         "browser_version": result.browser_version,
+                        "approved_dependency_urls": list(
+                            result.approved_dependency_urls
+                        ),
+                        "observed_dependency_urls": list(
+                            result.observed_dependency_urls
+                        ),
+                        "redactions": list(result.redactions),
+                        "materialized_shadow_roots": result.materialized_shadow_roots,
+                        "scrape_status": source.scrape_status,
+                        "currency_status": source.currency_status,
                     }
                 )
                 LOGGER.info(
@@ -280,6 +316,7 @@ def run_collection(config: RunConfig) -> RunSummary:
                     retrieved_at=retrieved_at,
                     run_id=run_id,
                     expected_method=expected_method,
+                    dataset_version=config.dataset_version,
                 )
                 failure_path = None
                 try:
@@ -332,6 +369,7 @@ def run_collection(config: RunConfig) -> RunSummary:
         robots.close()
 
     summary.completed_at = utc_now_iso()
+    summary.dataset_status = _dataset_status(summary, sources)
     manifest = _manifest(config, summary)
     summary.manifest_path = store.store_manifest(run_id=run_id, manifest=manifest)
     return summary
@@ -404,6 +442,7 @@ def _success_record(
     run_id: str,
     content_kind: str,
     content_hash: str,
+    dataset_version: Optional[str],
 ) -> Dict[str, Any]:
     content = extracted.text
     return {
@@ -420,14 +459,20 @@ def _success_record(
         "priority": source.priority,
         "dynamic_page": source.dynamic_page,
         "date_sensitive": source.date_sensitive,
+        "currency_status": source.currency_status,
         "scrape_status": source.scrape_status,
         "source_last_checked": source.last_checked,
         "source_notes": source.notes,
+        "approved_dependency_urls": list(source.approved_dependency_urls),
+        "observed_dependency_urls": list(result.observed_dependency_urls),
+        "capture_redactions": list(result.redactions),
+        "materialized_shadow_roots": result.materialized_shadow_roots,
         "registry_extras": source.extras,
         "retrieved_at": retrieved_at,
         "attempted_at": attempted_at,
         "run_id": run_id,
         "collector_version": COLLECTOR_VERSION,
+        "raw_dataset_version": dataset_version,
         "content_type": content_kind,
         "mime_type": result.mime_type,
         "fetch_method": result.fetch_method,
@@ -467,6 +512,7 @@ def _failure_record(
     retrieved_at: str,
     run_id: str,
     expected_method: str,
+    dataset_version: Optional[str],
 ) -> Dict[str, Any]:
     return {
         "document_id": source.document_id,
@@ -481,6 +527,10 @@ def _failure_record(
         "attempted_at": attempted_at,
         "run_id": run_id,
         "collector_version": COLLECTOR_VERSION,
+        "raw_dataset_version": dataset_version,
+        "currency_status": source.currency_status,
+        "scrape_status": source.scrape_status,
+        "approved_dependency_urls": list(source.approved_dependency_urls),
         "fetch_method": getattr(error, "method", None) or expected_method,
         "http_status": getattr(error, "status_code", None),
         "error_type": type(error).__name__,
@@ -530,6 +580,9 @@ def _selection_entry(source: SourceRecord, status: str) -> Dict[str, Any]:
         "category": source.category,
         "priority": source.priority,
         "dynamic_page": source.dynamic_page,
+        "currency_status": source.currency_status,
+        "scrape_status": source.scrape_status,
+        "approved_dependency_urls": list(source.approved_dependency_urls),
         "content_type": "pdf" if source.is_pdf else "html",
         "fetch_method": _expected_fetch_method(source),
         "status": status,
@@ -547,6 +600,8 @@ def _manifest(config: RunConfig, summary: RunSummary) -> Dict[str, Any]:
     project_root = config.project_root
     requirements_path = project_root / "requirements.txt"
     return {
+        "raw_dataset_version": config.dataset_version,
+        "dataset_status": summary.dataset_status,
         "collector_version": COLLECTOR_VERSION,
         "code_revision": _git_revision(project_root),
         "code_worktree_dirty": _git_worktree_dirty(project_root),
@@ -585,6 +640,7 @@ def _manifest(config: RunConfig, summary: RunSummary) -> Dict[str, Any]:
             "request_timeout_seconds": config.request_timeout_seconds,
             "playwright_timeout_ms": config.playwright_timeout_ms,
             "max_retries": config.max_retries,
+            "dataset_version": config.dataset_version,
             "retry_backoff_seconds": config.minimum_delay_seconds,
             "max_retry_delay_seconds": max(
                 config.maximum_delay_seconds, config.minimum_delay_seconds
@@ -606,6 +662,21 @@ def _manifest(config: RunConfig, summary: RunSummary) -> Dict[str, Any]:
         },
         "run": {key: value for key, value in summary.to_dict().items() if key != "manifest_path"},
     }
+
+
+def _dataset_status(
+    summary: RunSummary, sources: Sequence[SourceRecord] = ()
+) -> str:
+    unresolved = any(source.scrape_status == "manual_review" for source in sources)
+    if (
+        not unresolved
+        and summary.failed == 0
+        and summary.successful + summary.skipped == summary.selected
+    ):
+        return "complete"
+    if summary.successful > 0:
+        return "partial"
+    return "incomplete"
 
 
 def _git_revision(project_root: Path) -> Optional[str]:

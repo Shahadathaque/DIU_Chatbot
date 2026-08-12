@@ -77,11 +77,13 @@ Copy `.env.example` to `.env` and set local values as later phases require. Neve
 
 ## Current status
 
-Phase 4 controlled collection is implemented. The scraper processes only validated
+Phase 4.1 controlled collection is implemented. The scraper processes only validated
 entries in `data/source_registry.csv`, stores append-only raw captures under
 `data/raw/`, and supports static HTML, Playwright-rendered HTML, and original PDF
-bytes. Chat, eligibility, program, and source endpoints remain intentionally
-unimplemented; cleaning, RAG, embeddings, training, and evaluation have not begun.
+bytes. Exact read-only browser dependencies can be declared per source; wildcard
+cross-origin access remains blocked. The validated raw v1 snapshot is intentionally
+reported as partial because one program-specific source remains manual review.
+Chat, cleaning, RAG, embeddings, training, and evaluation have not begun.
 
 Run a no-network selection check or a small controlled collection with:
 
@@ -98,5 +100,8 @@ playwright install chromium
 ```
 
 See [`docs/backend/scraper_report.md`](docs/backend/scraper_report.md) for the
-measured Phase 4 sample and limitations. Generated raw artifacts are ignored by
-Git; retain them in backed-up research storage together with their run manifest.
+measured Phase 4 sample and
+[`docs/backend/raw_dataset_v1_report.md`](docs/backend/raw_dataset_v1_report.md)
+for the Phase 4.1 registry repair, expanded v1 collection, validation results, and
+remaining gaps. Generated raw artifacts are ignored by Git; retain them in
+backed-up research storage together with their run manifest.

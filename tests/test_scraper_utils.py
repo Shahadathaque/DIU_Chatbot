@@ -91,6 +91,8 @@ def test_source_metadata_is_json_serializable() -> None:
             "priority": "high",
             "dynamic_page": "false",
             "date_sensitive": "true",
+            "currency_status": "uncertain",
+            "scrape_status": "active",
             "custom_column": "kept",
         }
     )

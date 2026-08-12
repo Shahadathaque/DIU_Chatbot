@@ -54,6 +54,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--request-timeout", type=_positive_float, default=30.0, help="HTTP read/robots timeout in seconds (default: 30)")
     parser.add_argument("--playwright-timeout", type=_positive_int, default=30000, help="Playwright navigation timeout in milliseconds (default: 30000)")
     parser.add_argument("--retries", type=_retry_count, default=2, help="bounded transient retries, 0–5 (default: 2)")
+    parser.add_argument(
+        "--dataset-version",
+        help="raw dataset version recorded in every record and run manifest (for example: v1)",
+    )
     parser.add_argument("--seed", type=int, default=20260812, help="delay randomization seed (default: 20260812)")
     parser.add_argument(
         "--debug",
@@ -87,6 +91,7 @@ def main(argv: list[str] | None = None) -> int:
         request_timeout_seconds=args.request_timeout,
         playwright_timeout_ms=args.playwright_timeout,
         max_retries=args.retries,
+        dataset_version=args.dataset_version,
         debug=args.debug,
     )
 

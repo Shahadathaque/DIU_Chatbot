@@ -1,17 +1,23 @@
 # DIU Source Audit
 
-Audit date: **2026-08-10**  
+Audit date: **2026-08-12**
 Registry: [`data/source_registry.csv`](../../data/source_registry.csv)
 
 ## Method and verification meaning
 
-Discovery used DIU’s main sitemap, admission hub, and official pages linked from them. `verified` means the exact URL opened successfully and admission relevance was observed; it does **not** mean every fact is current. `manual_review` means the URL exists but useful content was hidden behind rendering or an older document needs currency review. No mass scraping occurred.
+Discovery used DIU’s main sitemap, admission hub, current application code, and
+official pages linked from them. Phase 4.1 replaced the earlier free-form
+`verified` state with validated `active`, `manual_review`, `unavailable`, and
+`deprecated` states. An `active` response still does **not** mean every fact is
+current; currency is recorded separately.
 
 ## Totals
 
 - Registered sources: **18**
-- Verified URLs: **14**
-- Manual-review URLs: **4**
+- Active sources: **16**
+- Manual-review sources: **2**
+- Unavailable sources: **0**
+- Deprecated sources: **0**
 - High priority: **11**
 - Medium priority: **7**
 - Dynamic pages: **12**
@@ -52,7 +58,12 @@ These contain direct applicant facts or paths to them. Fees, deadlines, requirem
 
 ## Dynamic and Playwright candidates
 
-The admission hub, programs, department admission page, tuition pages, scholarship page, calculator, online form, noticeboard, admission contact, and international pages are classified dynamic. Static inspection returned sparse shells or `Loading...` on several. Phase 4 should compare raw HTML with a rendered DOM before finalizing selectors.
+The admission hub, programs, department admission page, tuition pages,
+scholarship page, calculator, online form, noticeboard, admission contact, and
+international pages are classified dynamic. Nine sources now declare 16 exact,
+read-only webbackend dependency URLs. Shadow-root article content is materialized
+into the rendered-DOM capture with provenance; unrestricted cross-origin access
+remains blocked.
 
 ## Simple extraction candidates
 
@@ -60,18 +71,18 @@ The admission hub, programs, department admission page, tuition pages, scholarsh
 - The semester-specific DIU news article returned relevant HTML without interaction.
 - Direct PDFs include the flow chart, checklist, waiver policy, and international booklet.
 
-PDF text and tables need layout-aware extraction and visual verification; this audit did not collect them into the dataset.
+All four PDFs were acquired successfully in raw dataset v1. PDF text and tables
+still require layout-aware extraction and visual verification.
 
 ## Known gaps
 
-- Dedicated current undergraduate versus postgraduate catalogs were not clearly exposed in static output.
+- The BBA program-specific admission route remains a shell; its official API
+  returns HTTP 400 and the current BBA menu lists no admission item.
 - Dedicated diploma eligibility and program-specific requirement pages need manual navigation.
-- Some sitemap scholarship/international links returned discovery errors despite related official pages existing.
-- The admission-contact page did not expose contact data statically.
 - The 2021–2022 international booklet cannot establish current costs, deadlines, or policies.
 - The noticeboard needs admission-only filtering.
+- The international policy article has uncertain current-admission applicability.
 - Department admission routes may show stale/default dates and require change detection.
-- Robots guidance and terms must be reviewed immediately before Phase 4.
 
 ## Stable behavior versus changing facts
 

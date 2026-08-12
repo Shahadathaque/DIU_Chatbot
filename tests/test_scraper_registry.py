@@ -25,8 +25,10 @@ HEADERS = [
     "priority",
     "dynamic_page",
     "date_sensitive",
+    "currency_status",
     "scrape_status",
     "last_checked",
+    "approved_dependency_urls",
     "notes",
     "refresh_hint",
 ]
@@ -43,8 +45,10 @@ def _row(**overrides: str) -> dict[str, str]:
         "priority": "high",
         "dynamic_page": "true",
         "date_sensitive": "false",
-        "scrape_status": "verified",
+        "currency_status": "uncertain",
+        "scrape_status": "active",
         "last_checked": "2026-08-10",
+        "approved_dependency_urls": "",
         "notes": "Official source",
         "refresh_hint": "weekly",
     }
@@ -71,7 +75,8 @@ def test_load_registry_parses_booleans_and_retains_all_metadata(tmp_path: Path) 
     assert source.dynamic_page is True
     assert source.date_sensitive is False
     assert source.program is None
-    assert source.scrape_status == "verified"
+    assert source.currency_status == "uncertain"
+    assert source.scrape_status == "active"
     assert source.extras == {"refresh_hint": "weekly"}
     assert source.to_metadata()["extras"]["refresh_hint"] == "weekly"
 
@@ -95,6 +100,61 @@ def test_load_registry_rejects_non_boolean_values(
     _write_registry(path, [_row(**{field: "yes"})])
 
     with pytest.raises(RegistryValidationError, match="true.*false"):
+        load_registry(path)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("currency_status", "fresh"),
+        ("scrape_status", "verified"),
+    ],
+)
+def test_load_registry_rejects_unknown_state_values(
+    tmp_path: Path, field: str, value: str
+) -> None:
+    path = tmp_path / "registry.csv"
+    _write_registry(path, [_row(**{field: value})])
+
+    with pytest.raises(RegistryValidationError, match=field):
+        load_registry(path)
+
+
+def test_registry_parses_only_exact_https_dependencies(tmp_path: Path) -> None:
+    path = tmp_path / "registry.csv"
+    _write_registry(
+        path,
+        [
+            _row(
+                approved_dependency_urls=(
+                    "https://api.example.test/notices|"
+                    "https://api.example.test/faculties"
+                )
+            )
+        ],
+    )
+
+    source = load_registry(path)[0]
+
+    assert source.approved_dependency_urls == (
+        "https://api.example.test/notices",
+        "https://api.example.test/faculties",
+    )
+
+
+def test_registry_rejects_dependency_on_static_source(tmp_path: Path) -> None:
+    path = tmp_path / "registry.csv"
+    _write_registry(
+        path,
+        [
+            _row(
+                dynamic_page="false",
+                approved_dependency_urls="https://api.example.test/notices",
+            )
+        ],
+    )
+
+    with pytest.raises(RegistryValidationError, match="dynamic sources"):
         load_registry(path)
 
 
@@ -176,3 +236,5 @@ def test_repository_registry_is_valid_and_complete() -> None:
     assert len(sources) == 18
     assert all(isinstance(source.dynamic_page, bool) for source in sources)
     assert all(source.canonical_url.startswith("https://") for source in sources)
+    assert {source.scrape_status for source in sources} == {"active", "manual_review"}
+    assert all(source.currency_status for source in sources)

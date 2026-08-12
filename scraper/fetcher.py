@@ -57,6 +57,7 @@ class FetchableSource(Protocol):
 
     url: str
     dynamic_page: bool
+    approved_dependency_urls: Tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -120,6 +121,10 @@ class FetchResult:
     attempts: int = 1
     blocked_origins: Tuple[str, ...] = ()
     browser_version: Optional[str] = None
+    approved_dependency_urls: Tuple[str, ...] = ()
+    observed_dependency_urls: Tuple[str, ...] = ()
+    redactions: Tuple[str, ...] = ()
+    materialized_shadow_roots: int = 0
 
     def __post_init__(self) -> None:
         if not isinstance(self.body, bytes):
@@ -151,7 +156,13 @@ def fetch_source(
     if bool(source.dynamic_page):
         from scraper.playwright_fetcher import fetch_dynamic_html
 
-        return fetch_dynamic_html(url, resolved)
+        return fetch_dynamic_html(
+            url,
+            resolved,
+            approved_dependency_urls=tuple(
+                getattr(source, "approved_dependency_urls", ()) or ()
+            ),
+        )
 
     from scraper.html_fetcher import fetch_html
 

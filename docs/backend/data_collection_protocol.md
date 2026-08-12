@@ -20,9 +20,25 @@ Exclude biographies, publications, alumni content, student portals, registration
 
 Use simple HTTP extraction for pages classified `false`. Use Playwright when useful content is JavaScript-loaded, static HTML is only a shell, or controls reveal content. `unknown` pages require manual comparison of raw and rendered output.
 
+Cross-origin browser dependencies must be declared as exact HTTPS URLs in the
+registry. Only read-only `GET`/`HEAD` XHR or fetch requests to those URLs may be
+allowed after their own robots review. An approved endpoint does not authorize
+sibling paths, writes, cross-origin navigation, WebSockets, service workers, or
+a hostname wildcard.
+
 ## 6. Date-sensitive-information strategy
 
 Fees, deadlines, current-semester notices, requirements, scholarships, and waiver rules receive retrieval timestamps and shorter refresh intervals. They remain RAG evidence rather than fine-tuning facts.
+
+Every registry row also carries one explicit currency state:
+
+- `stable_reference`: process/reference content not expected to change frequently;
+- `current_date_sensitive`: volatile content that requires the retrieval date;
+- `historical`: valid dated evidence that must not be presented as current; or
+- `uncertain`: currency or rendered completeness still needs human review.
+
+Historical sources remain registered; downstream stages must use this state
+rather than treating a successful HTTP response as proof of currency.
 
 ## 7. Provenance requirements
 
@@ -68,6 +84,11 @@ Review `robots.txt`, terms, and relevant notices immediately before collection a
 
 Never edit raw captures. Store response bytes and metadata under versioned run IDs outside Git when large. Corrections occur only in derived data with lineage to raw hashes.
 
+Broader research snapshots carry a `raw_dataset_version` and a measured status:
+`complete` only when every selected source succeeds or is deliberately reused,
+`partial` when at least one succeeds and at least one fails, and `incomplete`
+when no selected source succeeds.
+
 ## 18. Data-cleaning separation
 
 Cleaning is a distinct reproducible step. It may remove repeated navigation/footer content and normalize whitespace while preserving headings, lists, tables, dates, conditions, programs, fees, and provenance.
@@ -75,4 +96,3 @@ Cleaning is a distinct reproducible step. It may remove repeated navigation/foot
 ## 19. Research reproducibility
 
 Version the registry, configuration, code revision, dependencies, run manifest, exclusions, failures, and hashes. Use UTC and deterministic transformations. Distinguish checked URLs from candidates and implemented pipelines from executed collection.
-
