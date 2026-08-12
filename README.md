@@ -77,13 +77,13 @@ Copy `.env.example` to `.env` and set local values as later phases require. Neve
 
 ## Current status
 
-Phase 4.1 controlled collection is implemented. The scraper processes only validated
-entries in `data/source_registry.csv`, stores append-only raw captures under
-`data/raw/`, and supports static HTML, Playwright-rendered HTML, and original PDF
-bytes. Exact read-only browser dependencies can be declared per source; wildcard
-cross-origin access remains blocked. The validated raw v1 snapshot is intentionally
-reported as partial because one program-specific source remains manual review.
-Chat, cleaning, RAG, embeddings, training, and evaluation have not begun.
+Phase 5 cleaning and normalization is implemented. The immutable raw v1 snapshot
+feeds 18 traceable cleaned records under `data/cleaned/v1/`; embedded PDF text,
+reliable tables, source currency states, manual-review states, hashes, and complete
+raw lineage are preserved. Validation passes, while the cleaned dataset remains
+truthfully partial because the BBA page is a non-substantive shell and the captured
+noticeboard has no admission-related entry. RAG, embeddings, training, eligibility
+logic, and evaluation have not begun.
 
 Run a no-network selection check or a small controlled collection with:
 
@@ -99,9 +99,21 @@ Dynamic sources require Chromium after installing the Python dependencies:
 playwright install chromium
 ```
 
+Validate the finalized Phase 5 output with the second command below. A reproducibility
+build must use a separate empty target, for example:
+
+```bash
+python scripts/clean_dataset.py --output-root /tmp/diu-cleaned-v1-check
+python scripts/validate_clean_dataset.py --cleaned-root /tmp/diu-cleaned-v1-check
+python scripts/validate_clean_dataset.py
+```
+
 See [`docs/backend/scraper_report.md`](docs/backend/scraper_report.md) for the
 measured Phase 4 sample and
 [`docs/backend/raw_dataset_v1_report.md`](docs/backend/raw_dataset_v1_report.md)
 for the Phase 4.1 registry repair, expanded v1 collection, validation results, and
-remaining gaps. Generated raw artifacts are ignored by Git; retain them in
-backed-up research storage together with their run manifest.
+remaining gaps. See
+[`docs/backend/clean_dataset_v1_report.md`](docs/backend/clean_dataset_v1_report.md)
+for the Phase 5 method, measured statistics, flags, and readiness decision.
+Generated raw and cleaned artifacts are ignored by Git; retain them in backed-up
+research storage together with their manifests.
