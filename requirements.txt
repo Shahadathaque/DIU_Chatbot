@@ -4,9 +4,10 @@ uvicorn[standard]==0.35.0
 pydantic==2.11.7
 pydantic-settings==2.10.1
 
-# Data collection and preparation (reserved for later phases)
+# Controlled data collection (Phase 4) and later preparation
 playwright==1.54.0
 beautifulsoup4==4.13.4
+requests==2.32.4
 pandas==2.3.1
 scikit-learn==1.7.1
 
@@ -26,4 +27,3 @@ pgvector==0.4.1
 # Testing
 pytest==8.4.1
 httpx==0.28.1
-

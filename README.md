@@ -77,5 +77,26 @@ Copy `.env.example` to `.env` and set local values as later phases require. Neve
 
 ## Current status
 
-Phase 2 repository and backend scaffolding is complete. Only `GET /health` is implemented. Chat, eligibility, program, and source endpoints are documented but intentionally unimplemented. Scraping, RAG, embeddings, training, and evaluation begin only in later approved phases.
+Phase 4 controlled collection is implemented. The scraper processes only validated
+entries in `data/source_registry.csv`, stores append-only raw captures under
+`data/raw/`, and supports static HTML, Playwright-rendered HTML, and original PDF
+bytes. Chat, eligibility, program, and source endpoints remain intentionally
+unimplemented; cleaning, RAG, embeddings, training, and evaluation have not begun.
 
+Run a no-network selection check or a small controlled collection with:
+
+```bash
+python scripts/scrape_diu.py --dry-run
+python scripts/scrape_diu.py --limit 3
+python scripts/scrape_diu.py --source-id DIU-ADM-001
+```
+
+Dynamic sources require Chromium after installing the Python dependencies:
+
+```bash
+playwright install chromium
+```
+
+See [`docs/backend/scraper_report.md`](docs/backend/scraper_report.md) for the
+measured Phase 4 sample and limitations. Generated raw artifacts are ignored by
+Git; retain them in backed-up research storage together with their run manifest.
