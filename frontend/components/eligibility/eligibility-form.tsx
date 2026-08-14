@@ -1,21 +1,19 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { EligibilityResult } from "@/components/eligibility/eligibility-result";
 import { ClipboardIcon, WarningIcon } from "@/components/ui/icons";
-import { ApiError, checkEligibility, isMockMode } from "@/services/api";
-import type { EligibilityRequest, EligibilityResponse } from "@/types/api";
-
-const programs = [
-  "CSE",
-  "SWE",
-  "EEE",
-  "CE",
-  "BBA",
-  "English",
-  "Law",
-  "Pharmacy",
-];
+import {
+  ApiError,
+  checkEligibility,
+  getPrograms,
+  isMockMode,
+} from "@/services/api";
+import type {
+  EligibilityRequest,
+  EligibilityResponse,
+  Program,
+} from "@/types/api";
 
 const groups: EligibilityRequest["group"][] = [
   "Science",
@@ -25,7 +23,7 @@ const groups: EligibilityRequest["group"][] = [
 ];
 
 const initialForm: EligibilityRequest = {
-  program: "CSE",
+  program: "",
   ssc_gpa: 4.5,
   hsc_gpa: 4.0,
   group: "Science",
@@ -37,6 +35,39 @@ export function EligibilityForm() {
   const [result, setResult] = useState<EligibilityResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [programs, setPrograms] = useState<Program[]>([]);
+  const [programsLoading, setProgramsLoading] = useState(true);
+  const [programsError, setProgramsError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadPrograms() {
+      try {
+        const response = await getPrograms();
+        if (cancelled) return;
+        setPrograms(response.programs);
+        if (response.programs[0]) {
+          setForm((current) => ({ ...current, program: response.programs[0].id }));
+        }
+        setProgramsError(null);
+      } catch (requestError) {
+        if (cancelled) return;
+        setProgramsError(
+          requestError instanceof ApiError
+            ? requestError.message
+            : "Could not load programs. Please try again.",
+        );
+      } finally {
+        if (!cancelled) setProgramsLoading(false);
+      }
+    }
+
+    void loadPrograms();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   function updateField<K extends keyof EligibilityRequest>(
     key: K,
@@ -93,17 +124,29 @@ export function EligibilityForm() {
                 Desired program
               </label>
               <select
-                className="h-12 w-full rounded-xl border border-line bg-canvas px-4 text-sm font-semibold text-ink"
+                className="h-12 w-full rounded-xl border border-line bg-canvas px-4 text-sm font-semibold text-ink disabled:opacity-60"
+                disabled={programsLoading}
                 id="program"
                 onChange={(event) => updateField("program", event.target.value)}
                 value={form.program}
               >
-                {programs.map((program) => (
-                  <option key={program} value={program}>
-                    {program}
-                  </option>
-                ))}
+                {programsLoading ? (
+                  <option value="">Loading programs...</option>
+                ) : programs.length === 0 ? (
+                  <option value="">No programs available</option>
+                ) : (
+                  programs.map((program) => (
+                    <option key={program.id} value={program.id}>
+                      {program.name}
+                    </option>
+                  ))
+                )}
               </select>
+              {programsError ? (
+                <p className="mt-2 text-xs leading-5 text-red-700" role="alert">
+                  {programsError}
+                </p>
+              ) : null}
             </div>
 
             <div>
@@ -184,7 +227,7 @@ export function EligibilityForm() {
 
           <button
             className="inline-flex min-h-12 items-center justify-center rounded-xl bg-brand px-6 text-sm font-bold text-white transition hover:bg-brand-dark disabled:cursor-not-allowed disabled:bg-slate-300"
-            disabled={isLoading}
+            disabled={isLoading || programsLoading || !form.program}
             type="submit"
           >
             {isLoading ? "Checking eligibility..." : "Check eligibility"}

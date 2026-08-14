@@ -1,0 +1,184 @@
+{
+  "registry_id": "programs-v1",
+  "version": "1.0.0",
+  "schema_version": "1.0",
+  "status": "active",
+  "description": "Recognized undergraduate program registry (R-001) derived from the collected official DIU program registry. This registry is known to be incomplete: it reflects only programs present in the collected DIU sources.",
+  "provenance": {
+    "collected_at": "2026-08-13T18:52:42.265030Z",
+    "sources": [
+      {
+        "source_id": "DIU-PROG-001",
+        "document_id": "diu-prog-001-5ad4c7cfdda0631f",
+        "title": "Programs",
+        "url": "https://daffodilvarsity.edu.bd/programs",
+        "category": "undergraduate_programs",
+        "retrieved_at": "2026-08-13T18:52:42.265030Z"
+      },
+      {
+        "source_id": "DIU-PROG-002",
+        "document_id": "diu-prog-002-7f6368af9285c14f",
+        "title": "Admission Page",
+        "url": "https://daffodilvarsity.edu.bd/department/bba/admission",
+        "category": "program_specific_admission",
+        "retrieved_at": "2026-08-13T18:52:51.989178Z"
+      }
+    ]
+  },
+  "evidence_gaps": [
+    "The collected program grid (DIU-PROG-001) lists only the Science and IT faculty undergraduate programs; other DIU faculties were not captured in the v1 cleaned snapshot, so the registry is incomplete.",
+    "DIU-PROG-002 (BBA) is a partial/manual-review capture whose admission page content is a non-substantive shell; only the BBA program identifier is recognized."
+  ],
+  "programs": [
+    {
+      "id": "cse",
+      "name": "B. Sc. in Computer Science and Engineering",
+      "tags": ["CSE"],
+      "degree": "B.Sc.",
+      "faculty": "Faculty of Science and Information Technology",
+      "references": [
+        {
+          "source_id": "DIU-PROG-001",
+          "document_id": "diu-prog-001-5ad4c7cfdda0631f",
+          "title": "Programs",
+          "url": "https://daffodilvarsity.edu.bd/programs"
+        }
+      ]
+    },
+    {
+      "id": "swe",
+      "name": "B. Sc. in Software Engineering (SWE)",
+      "tags": ["SWE"],
+      "degree": "B.Sc.",
+      "faculty": "Faculty of Science and Information Technology",
+      "references": [
+        {
+          "source_id": "DIU-PROG-001",
+          "document_id": "diu-prog-001-5ad4c7cfdda0631f",
+          "title": "Programs",
+          "url": "https://daffodilvarsity.edu.bd/programs"
+        }
+      ]
+    },
+    {
+      "id": "swe-cyber-security",
+      "name": "B. Sc. in Software Engineering (Major in Cyber Security)",
+      "tags": ["SWE"],
+      "degree": "B.Sc.",
+      "faculty": "Faculty of Science and Information Technology",
+      "references": [
+        {
+          "source_id": "DIU-PROG-001",
+          "document_id": "diu-prog-001-5ad4c7cfdda0631f",
+          "title": "Programs",
+          "url": "https://daffodilvarsity.edu.bd/programs"
+        }
+      ]
+    },
+    {
+      "id": "swe-data-science",
+      "name": "B.Sc. in Software Engineering ( Major in Data Science)",
+      "tags": ["SWE"],
+      "degree": "B.Sc.",
+      "faculty": "Faculty of Science and Information Technology",
+      "references": [
+        {
+          "source_id": "DIU-PROG-001",
+          "document_id": "diu-prog-001-5ad4c7cfdda0631f",
+          "title": "Programs",
+          "url": "https://daffodilvarsity.edu.bd/programs"
+        }
+      ]
+    },
+    {
+      "id": "swe-robotics",
+      "name": "B. Sc. in Software Engineering (Major in Robotics)",
+      "tags": ["SWE"],
+      "degree": "B.Sc.",
+      "faculty": "Faculty of Science and Information Technology",
+      "references": [
+        {
+          "source_id": "DIU-PROG-001",
+          "document_id": "diu-prog-001-5ad4c7cfdda0631f",
+          "title": "Programs",
+          "url": "https://daffodilvarsity.edu.bd/programs"
+        }
+      ]
+    },
+    {
+      "id": "mct",
+      "name": "B. Sc. in Multimedia & Creative Technology (MCT)",
+      "tags": ["MCT"],
+      "degree": "B.Sc.",
+      "faculty": "Faculty of Science and Information Technology",
+      "references": [
+        {
+          "source_id": "DIU-PROG-001",
+          "document_id": "diu-prog-001-5ad4c7cfdda0631f",
+          "title": "Programs",
+          "url": "https://daffodilvarsity.edu.bd/programs"
+        }
+      ]
+    },
+    {
+      "id": "cis",
+      "name": "B.Sc. in Computing and Information System (CIS)",
+      "tags": ["CIS"],
+      "degree": "B.Sc.",
+      "faculty": "Faculty of Science and Information Technology",
+      "references": [
+        {
+          "source_id": "DIU-PROG-001",
+          "document_id": "diu-prog-001-5ad4c7cfdda0631f",
+          "title": "Programs",
+          "url": "https://daffodilvarsity.edu.bd/programs"
+        }
+      ]
+    },
+    {
+      "id": "itm",
+      "name": "B.Sc. in Information Technology & Management (ITM)",
+      "tags": ["ITM"],
+      "degree": "B.Sc.",
+      "faculty": "Faculty of Science and Information Technology",
+      "references": [
+        {
+          "source_id": "DIU-PROG-001",
+          "document_id": "diu-prog-001-5ad4c7cfdda0631f",
+          "title": "Programs",
+          "url": "https://daffodilvarsity.edu.bd/programs"
+        }
+      ]
+    },
+    {
+      "id": "rme",
+      "name": "B.Sc. in Robotics and Mechatronics Engineering",
+      "tags": ["RME"],
+      "degree": "B.Sc.",
+      "faculty": "Faculty of Science and Information Technology",
+      "references": [
+        {
+          "source_id": "DIU-PROG-001",
+          "document_id": "diu-prog-001-5ad4c7cfdda0631f",
+          "title": "Programs",
+          "url": "https://daffodilvarsity.edu.bd/programs"
+        }
+      ]
+    },
+    {
+      "id": "bba",
+      "name": "BBA",
+      "tags": ["BBA"],
+      "degree": "BBA",
+      "faculty": "Faculty of Business and Entrepreneurship",
+      "references": [
+        {
+          "source_id": "DIU-PROG-002",
+          "document_id": "diu-prog-002-7f6368af9285c14f",
+          "title": "Admission Page",
+          "url": "https://daffodilvarsity.edu.bd/department/bba/admission"
+        }
+      ]
+    }
+  ]
+}

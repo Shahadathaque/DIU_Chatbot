@@ -139,6 +139,9 @@ def test_runner_reviews_every_exact_declared_dependency(tmp_path: Path, monkeypa
             rendered=True,
             approved_dependency_urls=source.approved_dependency_urls,
             observed_dependency_urls=source.approved_dependency_urls,
+            dependency_responses=(
+                (dependency, '{"programs": []}'),
+            ),
         )
 
     monkeypatch.setattr("scraper.fetcher.fetch_source", fake_fetch)
@@ -168,6 +171,9 @@ def test_runner_reviews_every_exact_declared_dependency(tmp_path: Path, monkeypa
     )
     assert record["raw_dataset_version"] == "v1"
     assert record["observed_dependency_urls"] == [dependency]
+    assert record["dependency_responses"] == {
+        dependency: '{"programs": []}'
+    }
     validation = validate_dataset(
         output_root=output,
         registry_path=registry,

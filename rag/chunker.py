@@ -61,6 +61,7 @@ class _ChunkPayload:
     source_locator: str
     page_number: Optional[int]
     program: Optional[str] = None
+    faculty: Optional[str] = None
 
 
 def load_cleaned_records(cleaned_root: Path | str) -> List[Dict[str, Any]]:
@@ -363,6 +364,7 @@ def _table_payloads(
             repeated_total=context_total,
         )
         program_column = _program_column(normalized_headers)
+        faculty_column = _faculty_column(normalized_headers)
         groups = _group_table_rows(
             headers=normalized_headers,
             rows=normalized_rows,
@@ -374,6 +376,9 @@ def _table_payloads(
             chunk_program = record.get("program")
             if chunk_program is None and program_column is not None:
                 chunk_program = group[0][program_column] or None
+            chunk_faculty = None
+            if faculty_column is not None:
+                chunk_faculty = group[0][faculty_column] or None
             content = _format_table(
                 title=str(record["title"]),
                 context=context,
@@ -387,6 +392,7 @@ def _table_payloads(
                     source_locator=f"{base_locator}-part-{part_number}",
                     page_number=page_number,
                     program=chunk_program,
+                    faculty=chunk_faculty,
                 )
             )
     return payloads
@@ -449,6 +455,15 @@ def _program_column(headers: Sequence[str]) -> Optional[int]:
     accepted = {"program", "full program name"}
     for index, header in enumerate(headers):
         if header.casefold().strip() in accepted:
+            return index
+    return None
+
+
+def _faculty_column(headers: Sequence[str]) -> Optional[int]:
+    """Return the index of an explicit source faculty column, if present."""
+
+    for index, header in enumerate(headers):
+        if header.casefold().strip() == "faculty":
             return index
     return None
 
@@ -968,13 +983,16 @@ def _knowledge_chunk(
 ) -> KnowledgeChunk:
     content = _normalize_text(payload.content)
     content_hash = _sha256_text(content)
+    identity_content_hash = _catalog_identity_content_hash(
+        record, payload=payload, content=content
+    ) or content_hash
     identity = "\x1f".join(
         (
             str(record["document_id"]),
             payload.content_type,
             payload.source_locator,
             str(payload.page_number or ""),
-            content_hash,
+            identity_content_hash,
         )
     )
     chunk_id = "diu-chunk-" + _sha256_text(identity)[:24]
@@ -987,7 +1005,7 @@ def _knowledge_chunk(
         title=str(record["title"]),
         category=str(record["category"]),
         program=payload.program,
-        faculty=record.get("faculty"),
+        faculty=payload.faculty if payload.faculty is not None else record.get("faculty"),
         content=content,
         content_type=payload.content_type,
         source_content_type=str(record["content_type"]),
@@ -1004,6 +1022,42 @@ def _knowledge_chunk(
         extraction_status=str(record["extraction_status"]),
         quality_flags=flags,
     )
+
+
+def _catalog_identity_content_hash(
+    record: Mapping[str, Any], *, payload: _ChunkPayload, content: str
+) -> Optional[str]:
+    """Keep catalog row IDs stable when optional source columns are enriched.
+
+    The original catalog identity consisted of its first four authoritative
+    columns. Department, duration, and page URL enrich that same program entity;
+    they should update the stored chunk rather than invalidate M5 references.
+    Changes to name, tag, level, or faculty still produce a new identity.
+    """
+
+    if (
+        str(record.get("source_id")) != "DIU-PROG-001"
+        or payload.content_type != "table"
+        or not payload.source_locator.startswith("official-programs-catalog-part-")
+    ):
+        return None
+    lines = [line for line in content.splitlines() if line.strip()]
+    expected = [
+        "Full Program Name",
+        "Short Tag / Initials",
+        "Program Level",
+        "Faculty",
+    ]
+    for index, line in enumerate(lines[:-1]):
+        headers = [cell.strip() for cell in line.split("|")]
+        values = [cell.strip() for cell in lines[index + 1].split("|")]
+        if headers[:4] != expected or len(values) < 4:
+            continue
+        identity_content = "\n".join(
+            [*lines[:index], " | ".join(expected), " | ".join(values[:4])]
+        )
+        return _sha256_text(_normalize_text(identity_content))
+    return None
 
 
 def _looks_like_heading(line: str) -> bool:

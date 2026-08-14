@@ -1,0 +1,100 @@
+{
+  "ruleset_id": "eligibility-rules-v1",
+  "version": "1.0.0",
+  "schema_version": "1.0",
+  "status": "active",
+  "decisive": false,
+  "description": "Deterministic eligibility rules derived ONLY from structural evidence present in the collected official DIU sources. Because the collected sources do not publish minimum SSC/HSC GPA, combined GPA, group/subject, or program-specific admission thresholds, this ruleset cannot make a decisive positive eligibility decision and therefore returns insufficient_information for normal applicants.",
+  "provenance": {
+    "collected_at": "2026-08-13T18:52:42.265030Z",
+    "sources": [
+      {
+        "source_id": "DIU-PROG-001",
+        "document_id": "diu-prog-001-5ad4c7cfdda0631f",
+        "title": "Programs",
+        "url": "https://daffodilvarsity.edu.bd/programs",
+        "category": "undergraduate_programs",
+        "retrieved_at": "2026-08-13T18:52:42.265030Z"
+      },
+      {
+        "source_id": "DIU-PROG-002",
+        "document_id": "diu-prog-002-7f6368af9285c14f",
+        "title": "Admission Page",
+        "url": "https://daffodilvarsity.edu.bd/department/bba/admission",
+        "category": "program_specific_admission",
+        "retrieved_at": "2026-08-13T18:52:51.989178Z"
+      },
+      {
+        "source_id": "DIU-NOT-002",
+        "document_id": "diu-not-002-c275b514d81490dc",
+        "title": "Daffodil International University Admission Open for Spring 2026",
+        "url": "https://news.daffodilvarsity.edu.bd/public/news/daffodil-international-university-admission-open-for-spring-2026-20251117-130343",
+        "category": "current_admission_information",
+        "retrieved_at": "2026-08-13T18:53:34.454555Z"
+      },
+      {
+        "source_id": "DIU-WAV-001",
+        "document_id": "diu-wav-001-a10884cbbc986cc0",
+        "title": "Policy of Waiver and Scholarship — Spring 2026",
+        "url": "https://webbackend.daffodilvarsity.edu.bd/images/download/waiver-policy2025.pdf",
+        "category": "waivers",
+        "retrieved_at": "2026-08-13T18:53:12.427455Z"
+      }
+    ]
+  },
+  "evidence_gaps": [
+    "The collected official DIU sources do not publish a minimum SSC GPA requirement.",
+    "The collected official DIU sources do not publish a minimum HSC GPA requirement.",
+    "The collected official DIU sources do not publish a combined SSC+HSC GPA requirement.",
+    "The collected official DIU sources do not publish group/subject admission requirements.",
+    "The collected official DIU sources do not publish program-specific GPA thresholds.",
+    "The collected official DIU sources do not publish admission-test scoring criteria.",
+    "Waiver percentages (e.g. DIU-WAV-001) are financial-aid criteria, not admission eligibility thresholds, and must not be converted into eligibility rules."
+  ],
+  "rules": [
+    {
+      "rule_id": "R-001",
+      "name": "Recognized undergraduate program",
+      "type": "program_registry",
+      "required_inputs": ["program"],
+      "decisive": false,
+      "description": "The requested program must appear in the collected DIU undergraduate program registry (rules/programs.v1.json). An unrecognized program is treated as not applicable because the registry is known to be incomplete.",
+      "references": [
+        {
+          "source_id": "DIU-PROG-001",
+          "document_id": "diu-prog-001-5ad4c7cfdda0631f",
+          "title": "Programs",
+          "url": "https://daffodilvarsity.edu.bd/programs"
+        },
+        {
+          "source_id": "DIU-PROG-002",
+          "document_id": "diu-prog-002-7f6368af9285c14f",
+          "title": "Admission Page",
+          "url": "https://daffodilvarsity.edu.bd/department/bba/admission"
+        }
+      ]
+    },
+    {
+      "rule_id": "R-002",
+      "name": "Documented bachelor pathway",
+      "type": "diploma_pathway",
+      "required_inputs": ["diploma"],
+      "decisive": false,
+      "description": "Both diploma=true and diploma=false are documented bachelor admission pathways. The collected admission notice accepts SSC/Dakhil/O-Level/Diploma and HSC/Alim/A-Level/Diploma certificates, and the waiver policy contains a diploma-results table.",
+      "references": [
+        {
+          "source_id": "DIU-NOT-002",
+          "document_id": "diu-not-002-c275b514d81490dc",
+          "title": "Daffodil International University Admission Open for Spring 2026",
+          "url": "https://news.daffodilvarsity.edu.bd/public/news/daffodil-international-university-admission-open-for-spring-2026-20251117-130343"
+        },
+        {
+          "source_id": "DIU-WAV-001",
+          "document_id": "diu-wav-001-a10884cbbc986cc0",
+          "title": "Policy of Waiver and Scholarship — Spring 2026",
+          "url": "https://webbackend.daffodilvarsity.edu.bd/images/download/waiver-policy2025.pdf"
+        }
+      ]
+    }
+  ]
+}

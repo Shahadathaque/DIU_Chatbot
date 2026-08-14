@@ -14,6 +14,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_EMBEDDING_MODEL = "intfloat/multilingual-e5-base"
 DEFAULT_EMBEDDING_REVISION = "d128750597153bb5987e10b1c3493a34e5a4502a"
 DEFAULT_EMBEDDING_DIMENSION = 768
+DEFAULT_GENERATOR_MODEL = "Qwen/Qwen2.5-1.5B-Instruct"
 
 
 class RagSettings(BaseSettings):
@@ -29,7 +30,7 @@ class RagSettings(BaseSettings):
     rag_vector_backend: Literal["pgvector", "local"] = "pgvector"
     rag_table_name: str = "diu_knowledge_chunks"
     rag_local_store_path: Path = PROJECT_ROOT / "data/chunks/local_knowledge_base.json"
-    rag_cleaned_data_path: Path = PROJECT_ROOT / "data/cleaned/v1"
+    rag_cleaned_data_path: Path = PROJECT_ROOT / "data/cleaned/v2"
 
     rag_chunk_size: int = Field(1200, ge=300)
     rag_chunk_overlap: int = Field(150, ge=0)
@@ -104,8 +105,71 @@ class RagSettings(BaseSettings):
         return self
 
 
+class GeneratorSettings(BaseSettings):
+    """LLM generator configuration loaded from environment or the root ``.env``."""
+
+    generator_backend: Literal["local", "openai"] = "local"
+    generator_model_name: str = DEFAULT_GENERATOR_MODEL
+    generator_model_revision: Optional[str] = None
+    generator_device: Optional[str] = None
+    generator_max_new_tokens: int = Field(256, ge=1)
+    generator_temperature: float = Field(0.0, ge=0.0, le=2.0)
+    generator_top_p: float = Field(0.9, ge=0.0, le=1.0)
+    generator_api_base: Optional[str] = None
+    generator_api_key: Optional[str] = None
+    generator_api_model: Optional[str] = None
+    generator_lora_adapter: Optional[Path] = None
+
+    model_config = SettingsConfigDict(
+        env_file=PROJECT_ROOT / ".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
+    @field_validator(
+        "generator_model_revision",
+        "generator_device",
+        "generator_api_base",
+        "generator_api_key",
+        "generator_api_model",
+        "generator_lora_adapter",
+        mode="before",
+    )
+    @classmethod
+    def blank_optional_values_are_none(cls, value: Any) -> Any:
+        return None if isinstance(value, str) and not value.strip() else value
+
+    @field_validator("generator_model_name", mode="before")
+    @classmethod
+    def blank_model_uses_default(cls, value: Any) -> Any:
+        if isinstance(value, str) and not value.strip():
+            return DEFAULT_GENERATOR_MODEL
+        return value
+
+    @field_validator("generator_lora_adapter")
+    @classmethod
+    def resolve_lora_adapter_from_project_root(cls, value: Optional[Path]) -> Optional[Path]:
+        if value is None:
+            return None
+        return value if value.is_absolute() else (PROJECT_ROOT / value).resolve()
+
+    @field_validator("generator_max_new_tokens")
+    @classmethod
+    def reject_blank_max_new_tokens(cls, value: Any) -> Any:
+        if isinstance(value, str) and not value.strip():
+            raise ValueError("GENERATOR_MAX_NEW_TOKENS cannot be blank")
+        return value
+
+
 @lru_cache
 def get_rag_settings() -> RagSettings:
     """Return cached RAG settings."""
 
     return RagSettings()
+
+
+@lru_cache
+def get_generator_settings() -> GeneratorSettings:
+    """Return cached generator settings."""
+
+    return GeneratorSettings()

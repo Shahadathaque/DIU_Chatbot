@@ -17,7 +17,11 @@ from scraper.extractor import extract_fetch_result, extract_html, extract_pdf
 from scraper.fetcher import FetchConfig, FetchResult, fetch_source
 from scraper.html_fetcher import fetch_html
 from scraper.pdf_fetcher import fetch_pdf
-from scraper.playwright_fetcher import _route_registered_origin, fetch_dynamic_html
+from scraper.playwright_fetcher import (
+    _make_dependency_response_capture,
+    _route_registered_origin,
+    fetch_dynamic_html,
+)
 
 
 class FakeRequestException(Exception):
@@ -363,6 +367,74 @@ class FakePlaywrightError(Exception):
     pass
 
 
+class FakeDependencyResponse:
+    def __init__(
+        self,
+        url: str,
+        *,
+        body: bytes,
+        content_type: str = "application/json",
+        method: str = "GET",
+        resource_type: str = "fetch",
+    ) -> None:
+        self.request = SimpleNamespace(
+            url=url, method=method, resource_type=resource_type
+        )
+        self.headers = {"content-type": content_type}
+        self._body = body
+
+    def body(self) -> bytes:
+        return self._body
+
+
+def test_dependency_response_capture_keeps_only_approved_json() -> None:
+    approved = (
+        "https://webbackend.daffodilvarsity.edu.bd/api/v1/public/academic/programs",
+    )
+    listener, captured = _make_dependency_response_capture(approved, max_response_bytes=10_000)
+
+    listener(
+        FakeDependencyResponse(
+            "https://webbackend.daffodilvarsity.edu.bd/api/v1/public/academic/programs",
+            body=b'{"program_types": []}',
+        )
+    )
+    listener(
+        FakeDependencyResponse(
+            "https://webbackend.daffodilvarsity.edu.bd/api/v1/public/academic/faculties",
+            body=b'{"data": []}',
+        )
+    )
+    listener(
+        FakeDependencyResponse(
+            "https://webbackend.daffodilvarsity.edu.bd/api/v1/public/academic/programs",
+            body=b'{"unapproved": true}',
+            method="POST",
+        )
+    )
+
+    assert captured == {
+        "https://webbackend.daffodilvarsity.edu.bd/api/v1/public/academic/programs": (
+            '{"program_types": []}'
+        )
+    }
+
+
+def test_dependency_response_capture_skips_oversized_and_non_utf8() -> None:
+    listener, captured = _make_dependency_response_capture(
+        ("https://api.example.test/v1/items",), max_response_bytes=4
+    )
+    listener(
+        FakeDependencyResponse("https://api.example.test/v1/items", body=b"toolargebody")
+    )
+    listener(
+        FakeDependencyResponse(
+            "https://api.example.test/v1/items", body=b"\xff\xfe binary"
+        )
+    )
+    assert captured == {}
+
+
 class FakeNavigationResponse:
     status = 200
     request = SimpleNamespace(redirected_from=None)
@@ -379,6 +451,14 @@ class FakePage:
         self.url = "https://example.test/app"
         self.closed = False
         self.timeouts = []
+        self.event_handlers: Dict[str, list] = {}
+
+    def on(self, event: str, handler: Any) -> None:
+        self.event_handlers.setdefault(event, []).append(handler)
+
+    def emit(self, event: str, *args: Any) -> None:
+        for handler in self.event_handlers.get(event, []):
+            handler(*args)
 
     def set_default_timeout(self, timeout: int) -> None:
         self.default_timeout = timeout

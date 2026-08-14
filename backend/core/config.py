@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     model_name: Optional[str] = None
     embedding_model_name: Optional[str] = None
     hf_token: Optional[str] = None
+    cors_origins: str = "http://localhost:3000"
 
     model_config = SettingsConfigDict(
         env_file=".env",

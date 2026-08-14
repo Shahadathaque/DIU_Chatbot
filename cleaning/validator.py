@@ -326,6 +326,22 @@ def _validate_record(
             errors.append(f"{source_id}: {name} does not preserve raw provenance")
 
     allowed_text = str(raw_record.get("content") or "") + "\n" + source.page_title
+    # Official absolute links retained by cleaning may combine source-provided
+    # route fields with the already-provenanced DIU origin. Include those raw
+    # provenance URLs and captured dependency URLs in the traceability corpus.
+    for name in ("source_url", "canonical_url", "final_url"):
+        allowed_text += "\n" + str(raw_record.get(name) or "")
+    for value in raw_record.get("approved_dependency_urls") or []:
+        if isinstance(value, str):
+            allowed_text += "\n" + value
+    dependency_responses = raw_record.get("dependency_responses")
+    if isinstance(dependency_responses, dict):
+        for url, value in dependency_responses.items():
+            if isinstance(url, str):
+                allowed_text += "\n" + url
+            if isinstance(value, str):
+                allowed_text += "\n" + value
+                allowed_text += "\n" + _decoded_json_strings(value)
     if record.get("content_type") == "pdf":
         try:
             extraction = extract_pdf(raw_bytes)
@@ -349,6 +365,34 @@ def _tokens(text: object) -> Set[str]:
         for token in WORD_PATTERN.findall(normalize_text(text))
         if not token.isdigit()
     }
+
+
+def _decoded_json_strings(text: str) -> str:
+    """Flatten every string value decoded from a JSON dependency response.
+
+    Dependency responses are stored as raw JSON text, so unicode characters may
+    be escaped (for example ``\\u2019``). Decoding the payload lets the
+    traceability check see the same characters that survive into cleaned output.
+    """
+
+    try:
+        payload = json.loads(text)
+    except (TypeError, ValueError):
+        return ""
+    values: List[str] = []
+
+    def visit(node: object) -> None:
+        if isinstance(node, str):
+            values.append(node)
+        elif isinstance(node, dict):
+            for value in node.values():
+                visit(value)
+        elif isinstance(node, list):
+            for value in node:
+                visit(value)
+
+    visit(payload)
+    return "\n".join(values)
 
 
 def _table_text(tables: object) -> str:

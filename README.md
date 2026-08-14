@@ -15,27 +15,16 @@ DIU official website
 ```
 
 Later experiments will compare a base LLM, fine-tuned LLM, base LLM with RAG,
-and fine-tuned LLM with RAG. The current step implements retrieval only; LLM
-generation and fine-tuning remain unimplemented.
+and fine-tuned LLM with RAG. Retrieval, the FastAPI backend, grounded local-LLM
+generation, the deterministic eligibility engine, and the Next.js frontend are
+implemented; evaluation and fine-tuning remain future work.
 
 ## Ownership
 
-Member 1 owns:
-
-- `backend/`
-- `scraper/`
-- `rag/`
-- `training/`
-- `evaluation/`
-- `data/`
-- `results/`
-- `scripts/`
-- `notebooks/`
-- `tests/`
-- `docs/backend/`
-- `contracts/` (coordinated shared contract)
-
-Member 2 owns `frontend/` and `docs/frontend/`. **Member 1 must not modify frontend implementation files.** Cross-boundary integration must follow [`contracts/api-contract.md`](contracts/api-contract.md).
+This is a single-developer project (see `AGENTS.md`). All directories belong to
+the developer; the `frontend/`/`backend/` split is architectural, not an
+ownership boundary. Cross-boundary integration follows
+[`contracts/api-contract.md`](contracts/api-contract.md).
 
 ## Directory structure
 
@@ -85,13 +74,17 @@ feeds 18 traceable cleaned records under `data/cleaned/v1/`; embedded PDF text,
 reliable tables, source currency states, manual-review states, hashes, and complete
 raw lineage are preserved. Validation passes, while the cleaned dataset remains
 truthfully partial because the BBA page is a non-substantive shell and the captured
-noticeboard has no admission-related entry. LLM generation, training, eligibility
-logic, and evaluation have not begun.
+noticeboard has no admission-related entry.
 
-The retrieval layer now converts that immutable snapshot into traceable,
-structure-aware evidence chunks and supports authority-gated semantic retrieval.
-Production storage is PostgreSQL + pgvector; a JSON store exists only for local
-development. No LLM generation or chat endpoint is connected yet.
+The retrieval layer converts that snapshot into traceable, structure-aware evidence
+chunks with authority-gated semantic retrieval (production: PostgreSQL + pgvector; a
+local JSON store for development). The FastAPI backend exposes `GET /health`,
+`POST /api/chat` (retrieval + grounded local Qwen generation), `POST /api/eligibility`
+(deterministic rule engine), `GET /api/programs`, and `GET /api/sources`, and the
+Next.js frontend runs against the real API (mock fixtures retained for tests).
+
+Research evaluation (base vs. fine-tuned × with/without RAG) and fine-tuning have not
+begun.
 
 Run a no-network selection check or a small controlled collection with:
 

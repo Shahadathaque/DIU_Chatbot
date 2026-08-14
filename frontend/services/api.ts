@@ -19,7 +19,7 @@ const API_URL = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000").rep
   /\/$/,
   "",
 );
-const REQUEST_TIMEOUT_MS = 15_000;
+export const REQUEST_TIMEOUT_MS = 90_000;
 
 export const isMockMode = process.env.NEXT_PUBLIC_USE_MOCK_API !== "false";
 
@@ -31,6 +31,26 @@ export class ApiError extends Error {
     super(message);
     this.name = "ApiError";
   }
+}
+
+async function extractErrorMessage(response: Response): Promise<string> {
+  try {
+    const body: unknown = await response.json();
+    if (
+      body &&
+      typeof body === "object" &&
+      "error" in body &&
+      (body as { error?: { message?: unknown } }).error &&
+      typeof (body as { error: { message?: unknown } }).error.message === "string"
+    ) {
+      return (body as { error: { message: string } }).error.message;
+    }
+  } catch {
+    // Fall through to the generic message when the body is not JSON.
+  }
+  return response.status >= 500
+    ? "The admission service is temporarily unavailable."
+    : "The request could not be completed.";
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -49,9 +69,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
     if (!response.ok) {
       throw new ApiError(
-        response.status >= 500
-          ? "The admission service is temporarily unavailable."
-          : "The request could not be completed.",
+        await extractErrorMessage(response),
         response.status,
       );
     }

@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass, field
-from typing import List
+from typing import Any, Dict, List, Mapping, Optional
 
 from bs4 import BeautifulSoup, Tag
 
@@ -40,6 +41,7 @@ def clean_html(
     raw_extracted_text: str,
     dynamic_page: bool,
     source_id: str,
+    dependency_responses: Optional[Mapping[str, str]] = None,
 ) -> HtmlCleaningResult:
     if source_id == "DIU-APP-001":
         text = _application_guidance(raw_extracted_text, title)
@@ -95,7 +97,9 @@ def clean_html(
         table.decompose()
 
     if source_id == "DIU-PROG-001":
-        program_table = _extract_program_grid(root)
+        program_table = _program_catalog_table(dependency_responses)
+        if program_table is None:
+            program_table = _extract_program_grid(root)
         if program_table is not None:
             tables.append(program_table)
 
@@ -190,6 +194,124 @@ def _meaningful_body(text: str, title: str) -> str:
     if lines and lines[0].casefold() == normalize_text(title).casefold():
         lines = lines[1:]
     return "\n".join(lines).strip()
+
+
+_PROGRAMS_API_SUFFIX = "/api/v1/public/academic/programs"
+_PROGRAM_PAGE_ORIGIN = "https://daffodilvarsity.edu.bd"
+_PROGRAM_PATH_SEGMENT = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+_DURATION_UNIT = re.compile(r"\b(?:years?|months?|semesters?)\b", re.IGNORECASE)
+
+
+def _program_page_url(program: Mapping[str, Any]) -> str:
+    """Return only the individual route explicitly described by catalog fields."""
+
+    department = str(program.get("department_short_name") or "").strip()
+    slug = str(program.get("slug") or "").strip()
+    if not (
+        _PROGRAM_PATH_SEGMENT.fullmatch(department)
+        and _PROGRAM_PATH_SEGMENT.fullmatch(slug)
+    ):
+        return ""
+    return f"{_PROGRAM_PAGE_ORIGIN}/department/{department}/program/{slug}"
+
+
+def _catalog_duration(program: Mapping[str, Any]) -> str:
+    """Keep source units verbatim and reject ambiguous bare numbers."""
+
+    duration = str(program.get("duration") or "").strip()
+    return duration if _DURATION_UNIT.search(duration) else ""
+
+
+def _program_catalog_table(
+    dependency_responses: Optional[Mapping[str, str]],
+) -> Optional[CleanTable]:
+    """Build the authoritative program catalog from the official API response.
+
+    The Programs page renders one faculty tab at a time, so the captured DOM
+    only ever contains a subset of the offerings. When collection captured the
+    approved ``academic/programs`` dependency response, this handler builds a
+    full catalog table from that official payload instead of the DOM grid. The
+    source's department slug and program slug are also retained as the same
+    individual route rendered by the catalog. Missing or malformed route fields
+    stay empty rather than producing a guessed URL.
+    """
+
+    if not dependency_responses:
+        return None
+    body: Optional[str] = None
+    for url, value in dependency_responses.items():
+        if url.rstrip("/").endswith(_PROGRAMS_API_SUFFIX):
+            body = value
+            break
+    if body is None:
+        return None
+    try:
+        payload = json.loads(body)
+    except (TypeError, ValueError):
+        return None
+    program_types = payload.get("program_types")
+    if not isinstance(program_types, list):
+        return None
+    faculty_by_id: Dict[int, str] = {}
+    for faculty in payload.get("data") or []:
+        if not isinstance(faculty, dict):
+            continue
+        try:
+            faculty_id = int(faculty.get("id"))
+        except (TypeError, ValueError):
+            continue
+        faculty_name = str(faculty.get("faculty_name") or "").strip()
+        if faculty_name:
+            faculty_by_id[faculty_id] = faculty_name
+    rows: List[List[str]] = []
+    seen_program_names: set[str] = set()
+    for program_type in program_types:
+        if not isinstance(program_type, dict):
+            continue
+        level = str(program_type.get("program_type_name") or "").strip()
+        programs = program_type.get("programs")
+        if not isinstance(programs, list):
+            continue
+        for program in programs:
+            if not isinstance(program, dict):
+                continue
+            name = str(program.get("name") or "").strip()
+            if not name:
+                continue
+            name_key = name.casefold()
+            if name_key in seen_program_names:
+                continue
+            seen_program_names.add(name_key)
+            tag = str(program.get("program_short_name") or "").strip()
+            faculty = str(program.get("faculty_name") or "").strip()
+            if not faculty:
+                try:
+                    faculty = faculty_by_id.get(int(program.get("faculty_id"))) or ""
+                except (TypeError, ValueError):
+                    faculty = ""
+            department = str(program.get("department_name") or "").strip()
+            duration = _catalog_duration(program)
+            program_url = _program_page_url(program)
+            rows.append(
+                [name, tag, level, faculty, department, duration, program_url]
+            )
+    if not rows:
+        return None
+    return CleanTable(
+        headers=[
+            "Full Program Name",
+            "Short Tag / Initials",
+            "Program Level",
+            "Faculty",
+            "Department",
+            "Duration",
+            "Program Page",
+        ],
+        rows=rows,
+        extraction_method="official_programs_api",
+        source_locator="official-programs-catalog",
+        extraction_quality="reliable",
+    )
 
 
 def _extract_program_grid(root: Tag) -> CleanTable | None:

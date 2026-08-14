@@ -465,6 +465,7 @@ def _success_record(
         "source_notes": source.notes,
         "approved_dependency_urls": list(source.approved_dependency_urls),
         "observed_dependency_urls": list(result.observed_dependency_urls),
+        "dependency_responses": dict(result.dependency_responses),
         "capture_redactions": list(result.redactions),
         "materialized_shadow_roots": result.materialized_shadow_roots,
         "registry_extras": source.extras,

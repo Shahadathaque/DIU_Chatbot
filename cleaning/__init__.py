@@ -3,7 +3,7 @@
 from cleaning.models import CleanedRecord, CleanTable, PageText
 
 
-CLEANING_PIPELINE_VERSION = "phase5-1.0"
+CLEANING_PIPELINE_VERSION = "phase5-2.0"
 
 __all__ = [
     "CLEANING_PIPELINE_VERSION",

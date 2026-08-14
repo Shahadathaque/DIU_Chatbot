@@ -56,12 +56,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--raw-root",
         type=Path,
-        default=PROJECT_ROOT / "data/raw/collection-v1-finalized",
+        default=PROJECT_ROOT / "data/raw/collection-v2-finalized",
     )
     parser.add_argument(
         "--output-root",
         type=Path,
-        default=PROJECT_ROOT / "data/cleaned/v1",
+        default=PROJECT_ROOT / "data/cleaned/v2",
     )
     parser.add_argument(
         "--registry",
@@ -151,6 +151,7 @@ def build_cleaned_dataset(
                 raw_extracted_text=str(raw_record.get("content") or ""),
                 dynamic_page=source.dynamic_page,
                 source_id=source_id,
+                dependency_responses=raw_record.get("dependency_responses") or {},
             )
             cleaned_content = cleaned.text
             source_text_length = cleaned.source_text_length

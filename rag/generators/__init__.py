@@ -1,0 +1,1 @@
+"""Generator backend adapters for the DIU LLM generation layer."""

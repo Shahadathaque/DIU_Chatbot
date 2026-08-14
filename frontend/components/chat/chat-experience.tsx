@@ -13,11 +13,18 @@ import {
   WarningIcon,
 } from "@/components/ui/icons";
 import { ApiError, isMockMode, sendChatMessage } from "@/services/api";
-import type { ApiSource, ChatRequest, Confidence, Language } from "@/types/api";
+import { buildChatRequest } from "@/services/chat-request";
+import type {
+  ApiSource,
+  ChatRequest,
+  ChatRole,
+  Confidence,
+  Language,
+} from "@/types/api";
 
 interface Message {
   id: string;
-  role: "user" | "assistant";
+  role: ChatRole;
   content: string;
   sources?: ApiSource[];
   confidence?: Confidence;
@@ -51,9 +58,12 @@ export function ChatExperience() {
     const trimmed = message.trim();
     if (!trimmed || isLoading) return;
 
-    const request = isRetry
-      ? { message: trimmed, language: failedRequest?.language ?? language }
-      : { message: trimmed, language };
+    const request = buildChatRequest(
+      trimmed,
+      language,
+      messages,
+      isRetry ? failedRequest : null,
+    );
 
     if (!isRetry) {
       setMessages((current) => [

@@ -22,12 +22,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--cleaned-root",
         type=Path,
-        default=PROJECT_ROOT / "data/cleaned/v1",
+        default=PROJECT_ROOT / "data/cleaned/v2",
     )
     parser.add_argument(
         "--raw-root",
         type=Path,
-        default=PROJECT_ROOT / "data/raw/collection-v1-finalized",
+        default=PROJECT_ROOT / "data/raw/collection-v2-finalized",
     )
     parser.add_argument(
         "--registry",

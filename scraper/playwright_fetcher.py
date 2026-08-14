@@ -123,6 +123,62 @@ def fetch_dynamic_html(
         ) from exc
 
 
+def _make_dependency_response_capture(
+    approved_dependency_urls: Tuple[str, ...],
+    max_response_bytes: int,
+) -> Tuple[Any, Dict[str, str]]:
+    """Capture bodies of approved read-only JSON dependency responses.
+
+    Approved dependencies are routed to proceed by :func:`_route_registered_origin`,
+    so the page listener observes their actual responses. Only GET fetch/XHR
+    responses whose canonical URL is in the approved set and whose content type
+    is JSON are retained, bounded by the configured byte limit. The decoded
+    bodies are returned keyed by canonical URL for downstream provenance.
+    """
+
+    approved = frozenset(approved_dependency_urls)
+    captured: Dict[str, str] = {}
+
+    def _on_response(response: Any) -> None:
+        request = getattr(response, "request", None)
+        if request is None:
+            return
+        try:
+            requested_canonical = canonicalize_url(request.url)
+        except Exception:
+            return
+        if requested_canonical not in approved:
+            return
+        if str(getattr(request, "method", "GET")).upper() != "GET":
+            return
+        if str(getattr(request, "resource_type", "")) not in {"fetch", "xhr"}:
+            return
+        content_type = ""
+        try:
+            content_type = str(
+                (response.headers.get("content-type") or "") or ""
+            ).lower()
+        except Exception:
+            content_type = ""
+        if "json" not in content_type:
+            return
+        if requested_canonical in captured:
+            return
+        try:
+            body = response.body()
+        except Exception:
+            return
+        if not isinstance(body, bytes) or len(body) > max_response_bytes:
+            return
+        try:
+            decoded = body.decode("utf-8")
+        except UnicodeDecodeError:
+            return
+        captured[requested_canonical] = decoded
+
+    return _on_response, captured
+
+
 def _navigate_with_retries(
     context: Any,
     url: str,
@@ -144,6 +200,10 @@ def _navigate_with_retries(
             if config.before_attempt is not None:
                 config.before_attempt(url)
             attempted = True
+            dependency_listener, dependency_bodies = _make_dependency_response_capture(
+                approved_dependency_urls, config.max_response_bytes
+            )
+            page.on("response", dependency_listener)
             response = page.goto(
                 url,
                 wait_until="domcontentloaded",
@@ -255,6 +315,7 @@ def _navigate_with_retries(
                 browser_version=browser_version,
                 approved_dependency_urls=approved_dependency_urls,
                 observed_dependency_urls=tuple(sorted(observed_dependency_urls)),
+                dependency_responses=tuple(sorted(dependency_bodies.items())),
                 redactions=redactions,
                 materialized_shadow_roots=materialized_shadow_roots,
             )

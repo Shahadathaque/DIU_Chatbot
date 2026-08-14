@@ -8,9 +8,17 @@ export interface ApiSource {
   url: string;
 }
 
+export type ChatRole = "user" | "assistant";
+
+export interface ChatTurn {
+  role: ChatRole;
+  content: string;
+}
+
 export interface ChatRequest {
   message: string;
   language: Language;
+  history?: ChatTurn[];
 }
 
 export interface ChatResponse {

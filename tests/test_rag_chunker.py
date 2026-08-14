@@ -100,6 +100,115 @@ def test_chunk_metadata_source_url_and_hashes_are_preserved() -> None:
     assert chunk.quality_flags == ("table_preserved", "verified")
 
 
+def test_program_catalog_chunk_retains_individual_url_and_metadata() -> None:
+    record = cleaned_record(
+        source_id="DIU-PROG-001",
+        document_id="diu-prog-001",
+        category="undergraduate_programs",
+        title="Programs",
+        content="Official program catalog.",
+        tables=[
+            {
+                "headers": [
+                    "Full Program Name",
+                    "Short Tag / Initials",
+                    "Program Level",
+                    "Faculty",
+                    "Department",
+                    "Duration",
+                    "Program Page",
+                ],
+                "rows": [
+                    [
+                        "Bachelor of Business Administration (BBA)",
+                        "BBA",
+                        "Undergraduate",
+                        "Business & Entrepreneurship",
+                        "Business Administration",
+                        "4 Years",
+                        "https://daffodilvarsity.edu.bd/department/bba/program/"
+                        "bachelor-of-business-administration",
+                    ]
+                ],
+                "extraction_method": "official_programs_api",
+                "source_locator": "official-programs-catalog",
+            }
+        ],
+    )
+
+    chunk = next(item for item in chunk_record(record, settings=_settings()) if item.content_type == "table")
+
+    assert chunk.program == "Bachelor of Business Administration (BBA)"
+    assert chunk.faculty == "Business & Entrepreneurship"
+    assert "Business Administration | 4 Years" in chunk.content
+    assert (
+        "https://daffodilvarsity.edu.bd/department/bba/program/"
+        "bachelor-of-business-administration" in chunk.content
+    )
+
+
+def test_program_catalog_optional_metadata_preserves_existing_chunk_identity() -> None:
+    base = cleaned_record(
+        source_id="DIU-PROG-001",
+        document_id="diu-prog-001",
+        category="undergraduate_programs",
+        title="Programs",
+        content="Official program catalog.",
+    )
+    legacy = dict(base)
+    legacy["tables"] = [
+        {
+            "headers": [
+                "Full Program Name",
+                "Short Tag / Initials",
+                "Program Level",
+                "Faculty",
+            ],
+            "rows": [
+                [
+                    "BBA in Finance & Banking",
+                    "FINANCE",
+                    "Undergraduate",
+                    "Business & Entrepreneurship",
+                ]
+            ],
+            "extraction_method": "official_programs_api",
+            "source_locator": "official-programs-catalog",
+        }
+    ]
+    enriched = dict(base)
+    enriched["tables"] = [
+        {
+            **legacy["tables"][0],
+            "headers": [
+                *legacy["tables"][0]["headers"],
+                "Department",
+                "Duration",
+                "Program Page",
+            ],
+            "rows": [
+                [
+                    *legacy["tables"][0]["rows"][0],
+                    "Finance & Banking",
+                    "4 Years",
+                    "https://daffodilvarsity.edu.bd/department/finance/program/"
+                    "finance-and-banking",
+                ]
+            ],
+        }
+    ]
+
+    legacy_chunk = next(
+        item for item in chunk_record(legacy, settings=_settings()) if item.content_type == "table"
+    )
+    enriched_chunk = next(
+        item for item in chunk_record(enriched, settings=_settings()) if item.content_type == "table"
+    )
+
+    assert enriched_chunk.chunk_id == legacy_chunk.chunk_id
+    assert enriched_chunk.content_hash != legacy_chunk.content_hash
+
+
 def test_chunk_ids_are_stable_but_change_with_content() -> None:
     record = _structured_record()
     first = chunk_record(record, settings=_settings())

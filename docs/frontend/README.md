@@ -1,6 +1,7 @@
 # DIU Admission AI — Frontend
 
-Member 2 ownership: `frontend/` and `docs/frontend/`.
+Part of a single-developer project (see `AGENTS.md`); `frontend/` and
+`docs/frontend/` are maintained here.
 
 ## Stack
 
@@ -38,15 +39,18 @@ Provisional types: `frontend/types/api.ts`
 
 ## API contract status
 
-`contracts/api-contract.md` is not yet in the repository. Frontend types follow the shapes from the master prompt and must be reconciled when the shared contract lands.
+`contracts/api-contract.md` is the shared contract. `frontend/types/api.ts` is
+aligned with it; additive backend fields such as eligibility
+`rule_matches`/`evidence_gaps` and source `category` are optional and safely
+ignored by the frontend types.
 
-Expected endpoints:
+Live endpoints:
 
 - `GET /health`
 - `POST /api/chat`
 - `POST /api/eligibility`
 - `GET /api/programs`
-- `GET /api/sources` (reserved; not required for current UI)
+- `GET /api/sources` (no UI page yet)
 
 ## Pages
 
@@ -68,4 +72,5 @@ npm run build
 
 ## Boundaries
 
-Do not edit backend/AI folders. Request API changes through the shared contract process.
+This is a single-developer project; there is no member ownership split (see
+`AGENTS.md`). API shape changes are coordinated through the shared contract.

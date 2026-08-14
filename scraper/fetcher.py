@@ -125,6 +125,7 @@ class FetchResult:
     observed_dependency_urls: Tuple[str, ...] = ()
     redactions: Tuple[str, ...] = ()
     materialized_shadow_roots: int = 0
+    dependency_responses: Tuple[Tuple[str, str], ...] = ()
 
     def __post_init__(self) -> None:
         if not isinstance(self.body, bytes):
