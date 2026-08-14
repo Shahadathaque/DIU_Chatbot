@@ -417,3 +417,14 @@ scope), record it here with a short reason._
   Business and all 9 Engineering programs. No frontend, eligibility-engine, M5
   artifact/result, M6, fine-tuning, training, model download, or paid API work was
   performed.
+- **2026-08-14** — TASK-PUBLISH completed. Refreshed `origin/main` and confirmed
+  `0/0` divergence before publication. Audited the complete 81-file commit
+  candidate: `.env`, credentials, raw/cleaned datasets, local KB/vector data,
+  evaluation results, model weights, frontend build caches, and large generated
+  artifacts remained ignored; staged secret-pattern, prohibited-path, >1 MB file,
+  and whitespace checks were clean. Reverified the frontend immediately before
+  publication: Vitest 14 passed, TypeScript typecheck passed, ESLint passed; the
+  final backend suite from TASK-CATALOG was 324 passed in cached-model offline
+  mode. Pushed `b5ce6d6` (`feat: complete DIU admission assistant demo`) normally
+  to `origin/main` with no force or history rewrite. This publication performed no
+  feature, eligibility, M5-result, M6, training, or fine-tuning work.

@@ -1,6 +1,6 @@
 # TASK-PUBLISH — Publish Completed Project Work to GitHub
 
-Status: In progress
+Status: Complete
 
 This task supersedes the completed `TASK-CATALOG` instructions. Permanent
 constraints in `AGENTS.md` remain authoritative.
@@ -30,3 +30,13 @@ GitHub `origin` on the current `main` branch.
 - Do not change eligibility behavior, admission facts, or research results.
 - Do not force-push, rewrite history, or delete branches.
 - Do not commit ignored/private/generated artifacts.
+
+## Completion evidence
+
+- Refreshed `origin/main`; local/remote divergence was `0/0` before commit.
+- Backend suite previously verified: 324 passed in cached-model offline mode.
+- Frontend verification rerun immediately before publication: 14 Vitest tests
+  passed; TypeScript typecheck and ESLint passed.
+- Staged audit found no secret signatures, prohibited paths, whitespace errors,
+  files over 1 MB, model weights, generated KB/data, or research results.
+- Project commit `b5ce6d6` pushed to `origin/main` without force.
