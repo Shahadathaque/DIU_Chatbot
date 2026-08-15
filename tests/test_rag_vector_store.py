@@ -42,6 +42,23 @@ def test_pgvector_requires_immutable_commit_revision_in_every_factory_path() -> 
     assert store.embedding_model_revision == DEFAULT_EMBEDDING_REVISION
 
 
+def test_pgvector_accepts_provider_versioned_hosted_embedding_model() -> None:
+    settings = RagSettings(
+        _env_file=None,
+        database_url="postgresql://example.invalid/diu",
+        embedding_backend="openai",
+        embedding_api_base="https://model.example/v1",
+        embedding_api_model="gemini-embedding-2",
+        embedding_dimension=768,
+    )
+
+    store = create_vector_store(settings)
+
+    assert isinstance(store, PgVectorStore)
+    assert store.embedding_model_name == "gemini-embedding-2"
+    assert store.embedding_model_revision is None
+
+
 def test_table_names_are_lowercase_for_safe_regclass_lookup() -> None:
     with pytest.raises(ValueError, match="lowercase"):
         RagSettings(_env_file=None, rag_table_name="DIU_Chunks")

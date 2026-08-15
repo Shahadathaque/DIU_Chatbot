@@ -75,6 +75,8 @@ class SourcesService:
     def _use_database(self) -> bool:
         if self._repository is not None:
             return True
+        if self._cleaned_root is not None:
+            return False
         backend = self._catalog_backend or get_settings().runtime_catalog_backend
         return backend == "database"
 

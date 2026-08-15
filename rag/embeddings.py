@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import math
-from typing import Any, Iterable, List, Optional, Protocol, Sequence
+import time
+from typing import Any, Callable, Iterable, List, Optional, Protocol, Sequence
 
 import httpx
 
@@ -134,8 +135,10 @@ class OpenAICompatibleEmbedder:
         model_revision: Optional[str] = None,
         batch_size: int = 16,
         timeout: float = 30.0,
+        request_interval: float = 0.0,
         send_dimensions: bool = True,
         client: Optional[httpx.Client] = None,
+        sleeper: Callable[[float], None] = time.sleep,
     ) -> None:
         if not api_base.strip():
             raise ValueError("embedding API base cannot be blank")
@@ -143,6 +146,8 @@ class OpenAICompatibleEmbedder:
             raise ValueError("embedding API model cannot be blank")
         if dimension < 1 or batch_size < 1:
             raise ValueError("embedding dimension and batch size must be positive")
+        if request_interval < 0:
+            raise ValueError("embedding request interval cannot be negative")
         self.model_name = model_name
         self.model_revision = model_revision
         self.dimension = dimension
@@ -150,13 +155,17 @@ class OpenAICompatibleEmbedder:
         self._base_url = api_base.rstrip("/")
         self._api_key = api_key
         self._timeout = timeout
+        self._request_interval = request_interval
         self._send_dimensions = send_dimensions
         self._client = client
+        self._sleep = sleeper
 
     def embed_documents(self, texts: Sequence[str]) -> List[List[float]]:
         values: List[List[float]] = []
         prepared = [str(text).strip() for text in texts]
         for start in range(0, len(prepared), self.batch_size):
+            if start and self._request_interval:
+                self._sleep(self._request_interval)
             values.extend(self._request(prepared[start : start + self.batch_size]))
         return values
 
@@ -197,7 +206,18 @@ class OpenAICompatibleEmbedder:
             )
         try:
             body = response.json()
-            entries = sorted(body["data"], key=lambda item: int(item["index"]))
+            entries = list(body["data"])
+            # Some OpenAI-compatible providers omit an index when its value is
+            # zero (for example, Gemini's compatibility endpoint). Preserve
+            # response order as the fallback while still honoring explicit
+            # indexes when they are present.
+            entries = [
+                entry
+                for _index, entry in sorted(
+                    enumerate(entries),
+                    key=lambda pair: int(pair[1].get("index", pair[0])),
+                )
+            ]
             raw_vectors = [item["embedding"] for item in entries]
         except (KeyError, TypeError, ValueError) as error:
             raise EmbeddingUnavailableError(
@@ -242,6 +262,7 @@ def create_embedder(
             dimension=selected_dimension,
             batch_size=resolved.embedding_batch_size,
             timeout=resolved.embedding_api_timeout,
+            request_interval=resolved.embedding_api_request_interval,
             send_dimensions=resolved.embedding_api_send_dimensions,
         )
     return SentenceTransformerEmbedder(

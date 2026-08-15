@@ -35,7 +35,7 @@ early.
 | Backend verification | **TASK-13 done** — offline unit suite, focused API/core/RAG/eligibility checks, coverage report, model-free validation, and isolated-environment verification |
 | Production optimization | **TASK-15 implementation complete** — hosted-generator configuration alignment, SSE chat route, static endpoint TTL caches, optional pooled PostgreSQL, liveness/readiness probes, production rate limiting, optional Sentry hook, and opt-in cross-encoder reranking. Provider deployment, secrets, and pgvector population remain operator actions. |
 | v2 artifact recovery | **TASK-16 done** — recollected and validated all 18 registered official sources, restored the 52-row program catalog, rebuilt 264 chunks, and populated the Neon pgvector index. |
-| Hosted deployment runtime | **TASK-17 done** — Neon-backed runtime program/source catalogs, hosted OpenAI-compatible embeddings, strict production backend selection, slim container requirements, and Render deployment blueprint. Neon catalog is populated; provider key, hosted-vector rebuild, and external deploy remain operator actions. |
+| Hosted deployment runtime | **TASK-18 done** — Neon-backed runtime catalogs, stable Gemini generation/768-d embeddings, isolated 264-chunk hosted pgvector index, free-tier indexing throttle, and local production verification without local artifacts/models. External deploy awaits rotated secrets and hosting-account setup. |
 
 ## Deployment Status
 
@@ -52,19 +52,21 @@ early.
 - TASK-15: Production optimization implementation ✅ (deployment pending)
 - TASK-16: Complete v2 knowledge base and Neon pgvector population ✅
 - TASK-17: Neon runtime catalog and hosted backend preparation ✅ (provider deployment pending)
+- TASK-18: Hosted vector index and deployment-readiness verification ✅ (external deploy pending)
 
 ### Current
 
 The Neon runtime catalog is populated with 52 programs and 18 official sources.
-The lightweight hosted backend is prepared, but chat deployment requires a
-provider API key, rebuilding the 264 chunks into the configured hosted embedding
-table, and performing the provider deployment.
+The lightweight hosted backend is prepared. The isolated hosted embedding table
+contains all 264 chunks, and local production verification passed without local
+data or model artifacts. Public deployment still requires rotating the exposed
+provider/database credentials and configuring the hosting account.
 
 ### Next
 
-Create the hosted-model key, rebuild the hosted embedding table, deploy the
-backend from `render.yaml`, set the Vercel API URL/CORS origin, and run the
-post-deployment checks before beginning further research work.
+Rotate the provider and database credentials, deploy the backend from
+`render.yaml`, set the Vercel API URL/CORS origin, and run the post-deployment
+checks before beginning further research work.
 
 ### Key gaps blocking a complete product
 1. ~~No chat endpoint — the retriever exists but is never called from the API.~~ **Resolved in TASK-01** (`/api/chat` now calls the retriever).

@@ -95,6 +95,24 @@ def test_openai_api_model_override() -> None:
     assert generator.model_name == "custom-model"
 
 
+def test_openai_reasoning_effort_is_optional_and_forwarded() -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(
+            200, json={"choices": [{"message": {"content": "ok"}}]}
+        )
+
+    generator = OpenAICompatibleGenerator(
+        _settings(generator_api_reasoning_effort="minimal"),
+        client=_client(handler),
+    )
+    generator.generate([{"role": "user", "content": "hello"}])
+
+    assert captured["body"]["reasoning_effort"] == "minimal"
+
+
 def test_openai_generate_http_error_raises() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(503, json={"error": "down"})

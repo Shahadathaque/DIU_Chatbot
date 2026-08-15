@@ -354,11 +354,16 @@ table. Document and query embeddings must use the identical model and dimension:
 EMBEDDING_BACKEND=openai \
 EMBEDDING_API_BASE=https://provider.example/v1 \
 EMBEDDING_API_KEY=your-secret \
-EMBEDDING_API_MODEL=your-embedding-model \
+EMBEDDING_API_MODEL=gemini-embedding-2 \
 EMBEDDING_DIMENSION=768 \
+EMBEDDING_API_REQUEST_INTERVAL=8 \
 RAG_TABLE_NAME=diu_knowledge_chunks_hosted \
 .venv311/bin/python scripts/build_knowledge_base.py --rebuild
 ```
+
+`EMBEDDING_API_REQUEST_INTERVAL` only throttles multi-batch indexing. Use `0`
+for providers with sufficient quota; a small delay such as `8` seconds avoids
+free-tier token-per-minute errors and does not slow single-query retrieval.
 
 For any backend provider:
 
@@ -368,6 +373,8 @@ For any backend provider:
    PostgreSQL `DATABASE_URL`, hosted generator and embedding variables,
    `RAG_TABLE_NAME=diu_knowledge_chunks_hosted`, and the Vercel origin in
    `CORS_ORIGINS`.
+   For Gemini 3 chat, set `GENERATOR_API_REASONING_EFFORT=minimal` so short
+   admission answers do not spend the response limit on unnecessary reasoning.
 3. Set the deploy/start command:
 
    ```bash

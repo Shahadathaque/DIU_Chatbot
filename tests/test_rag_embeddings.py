@@ -63,6 +63,7 @@ def test_embedder_rejects_configured_dimension_mismatch() -> None:
 
 def test_openai_compatible_embedder_batches_normalizes_and_authenticates() -> None:
     captured: list[dict[str, Any]] = []
+    sleeps: list[float] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
         body = json.loads(request.content)
@@ -89,7 +90,9 @@ def test_openai_compatible_embedder_batches_normalizes_and_authenticates() -> No
         model_name="hosted-embedding",
         dimension=2,
         batch_size=2,
+        request_interval=0.25,
         client=httpx.Client(transport=httpx.MockTransport(handler)),
+        sleeper=sleeps.append,
     )
 
     assert embedder.embed_documents(["one", "two", "three"]) == [
@@ -98,6 +101,7 @@ def test_openai_compatible_embedder_batches_normalizes_and_authenticates() -> No
         [0.6, 0.8],
     ]
     assert len(captured) == 2
+    assert sleeps == [0.25]
     assert captured[0]["url"] == "https://model.example/v1/embeddings"
     assert captured[0]["authorization"] == "Bearer secret"
     assert captured[0]["body"] == {
@@ -120,6 +124,32 @@ def test_openai_compatible_embedder_rejects_invalid_provider_response() -> None:
     )
     with pytest.raises(EmbeddingUnavailableError, match="wrong number"):
         embedder.embed_query("DIU admission")
+
+
+def test_openai_compatible_embedder_accepts_omitted_zero_index() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "data": [
+                    {"embedding": [1.0, 0.0]},
+                    {"index": 1, "embedding": [0.0, 1.0]},
+                ]
+            },
+        )
+
+    embedder = OpenAICompatibleEmbedder(
+        api_base="https://model.example/v1",
+        api_key=None,
+        model_name="hosted-embedding",
+        dimension=2,
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    assert embedder.embed_documents(["first", "second"]) == [
+        [1.0, 0.0],
+        [0.0, 1.0],
+    ]
 
 
 def test_create_embedder_selects_hosted_backend() -> None:

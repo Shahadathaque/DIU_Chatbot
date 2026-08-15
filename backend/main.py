@@ -15,7 +15,6 @@ from backend.core.config import get_settings
 from backend.core.errors import register_exception_handlers
 from backend.core.logging import configure_logging
 from rag.config import get_rag_settings
-from rag.config import get_generator_settings
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -90,17 +89,10 @@ async def startup_validation() -> None:
     database_status = (
         "PostgreSQL configured" if runtime_settings.database_url else "not configured"
     )
-    try:
-        generator_settings = get_generator_settings()
-        generator_base = (
-            generator_settings.generator_api_base
-            or runtime_settings.generator_api_base
-            or runtime_settings.openai_api_base
-        )
-        generator_backend = generator_settings.generator_backend
-    except Exception:  # pragma: no cover - defensive startup logging fallback
-        generator_base = runtime_settings.generator_api_base or runtime_settings.openai_api_base
-        generator_backend = runtime_settings.generator_backend or "unknown"
+    generator_base = (
+        runtime_settings.generator_api_base or runtime_settings.openai_api_base
+    )
+    generator_backend = runtime_settings.generator_backend or "openai"
     model_status = (
         "Configured ({})".format(generator_backend)
         if generator_base

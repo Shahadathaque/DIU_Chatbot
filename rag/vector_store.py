@@ -165,6 +165,7 @@ class PgVectorStore:
         embedding_dimension: int,
         embedding_model_name: str,
         embedding_model_revision: Optional[str] = None,
+        require_immutable_revision: bool = True,
         pool_min_size: int = 1,
         pool_max_size: int = 4,
         pool_timeout: float = 10.0,
@@ -177,7 +178,8 @@ class PgVectorStore:
         self.embedding_dimension = _validated_dimension(embedding_dimension)
         self.embedding_model_name = _validated_model_name(embedding_model_name)
         self.embedding_model_revision = _validated_pgvector_revision(
-            embedding_model_revision
+            embedding_model_revision,
+            required=require_immutable_revision,
         )
         if pool_min_size < 1 or pool_max_size < pool_min_size:
             raise VectorStoreConfigurationError(
@@ -925,12 +927,15 @@ def create_vector_store(settings: Optional[RagSettings] = None) -> VectorStore:
         raise VectorStoreConfigurationError(
             "DATABASE_URL is required when RAG_VECTOR_BACKEND=pgvector"
         )
+    require_immutable_revision = resolved.embedding_backend == "local"
     common["embedding_model_revision"] = _validated_pgvector_revision(
-        resolved.embedding_model_revision
+        resolved.embedding_model_revision,
+        required=require_immutable_revision,
     )
     return PgVectorStore(
         resolved.database_url,
         table_name=resolved.rag_table_name,
+        require_immutable_revision=require_immutable_revision,
         pool_min_size=resolved.db_pool_min_size,
         pool_max_size=resolved.db_pool_max_size,
         pool_timeout=resolved.db_pool_timeout,
@@ -1114,14 +1119,18 @@ def _validated_identifier(value: str) -> str:
     return value
 
 
-def _validated_pgvector_revision(value: Optional[str]) -> str:
-    """Require a full immutable Git commit for production embeddings."""
+def _validated_pgvector_revision(
+    value: Optional[str], *, required: bool = True
+) -> Optional[str]:
+    """Validate local commits while allowing provider-versioned hosted models."""
 
     candidate = value if isinstance(value, str) else ""
+    if not candidate and not required:
+        return None
     if not _IMMUTABLE_REVISION_PATTERN.fullmatch(candidate):
         raise VectorStoreConfigurationError(
             "EMBEDDING_MODEL_REVISION must be an immutable 40-character "
-            "lowercase hexadecimal commit when RAG_VECTOR_BACKEND=pgvector"
+            "lowercase hexadecimal commit for local pgvector embeddings"
         )
     return candidate
 

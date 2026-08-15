@@ -93,12 +93,14 @@ DATABASE_URL=postgresql://USER:PASSWORD@HOST/DB?sslmode=require
 GENERATOR_BACKEND=openai
 GENERATOR_API_BASE=https://generativelanguage.googleapis.com/v1beta/openai/
 GENERATOR_API_KEY=provider-secret
-GENERATOR_API_MODEL=provider-flash-model
+GENERATOR_API_MODEL=gemini-3.6-flash
+GENERATOR_API_REASONING_EFFORT=minimal
 EMBEDDING_BACKEND=openai
 EMBEDDING_API_BASE=https://generativelanguage.googleapis.com/v1beta/openai/
 EMBEDDING_API_KEY=provider-secret
-EMBEDDING_API_MODEL=provider-embedding-model
+EMBEDDING_API_MODEL=gemini-embedding-2
 EMBEDDING_DIMENSION=768
+EMBEDDING_API_REQUEST_INTERVAL=0
 CORS_ORIGINS=https://your-app.vercel.app
 ```
 

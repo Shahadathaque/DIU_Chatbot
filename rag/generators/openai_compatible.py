@@ -40,6 +40,7 @@ class OpenAICompatibleGenerator:
         self.top_p = settings.generator_top_p
         self._base_url = base_url
         self._api_key = settings.generator_api_key
+        self._reasoning_effort = settings.generator_api_reasoning_effort
         self._client = client
 
     def _endpoint(self) -> str:
@@ -65,6 +66,8 @@ class OpenAICompatibleGenerator:
             "temperature": self.temperature if temperature is None else temperature,
             "top_p": self.top_p if top_p is None else top_p,
         }
+        if self._reasoning_effort:
+            payload["reasoning_effort"] = self._reasoning_effort
         try:
             if self._client is not None:
                 response = self._client.post(
