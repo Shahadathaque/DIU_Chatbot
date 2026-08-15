@@ -68,6 +68,13 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=PROJECT_ROOT / "data/source_registry.csv",
     )
+    parser.add_argument(
+        "--dataset-version",
+        help=(
+            "raw dataset version to select when the raw root contains run "
+            "manifests (for example: v2); inferred only when exactly one exists"
+        ),
+    )
     parser.add_argument("--near-duplicate-threshold", type=_threshold, default=0.92)
     return parser
 
@@ -81,6 +88,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             registry_path=args.registry,
             near_duplicate_threshold=args.near_duplicate_threshold,
             project_root=PROJECT_ROOT,
+            dataset_version=args.dataset_version,
         )
     except (OSError, ValueError, RuntimeError, json.JSONDecodeError) as error:
         print(f"clean_dataset: {type(error).__name__}: {error}", file=sys.stderr)
@@ -96,6 +104,7 @@ def build_cleaned_dataset(
     registry_path: Path,
     near_duplicate_threshold: float,
     project_root: Path,
+    dataset_version: str | None = None,
 ) -> Dict[str, Any]:
     raw_root = Path(raw_root)
     output_root = Path(output_root)
@@ -107,7 +116,9 @@ def build_cleaned_dataset(
         raise ValueError(f"raw dataset root does not exist: {raw_root}")
 
     sources = {source.source_id: source for source in load_registry(registry_path)}
-    raw_manifest_path, raw_manifest = _raw_manifest(raw_root)
+    raw_manifest_path, raw_manifest = _raw_manifest(
+        raw_root, dataset_version=dataset_version
+    )
     run = raw_manifest.get("run")
     if not isinstance(run, dict) or not isinstance(run.get("results"), list):
         raise ValueError("raw manifest does not contain run.results")
@@ -330,14 +341,19 @@ def build_cleaned_dataset(
     }
 
 
-def _raw_manifest(raw_root: Path) -> tuple[Path, Dict[str, Any]]:
+def _raw_manifest(
+    raw_root: Path, *, dataset_version: str | None = None
+) -> tuple[Path, Dict[str, Any]]:
     candidates = []
     for path in sorted((raw_root / "runs").glob("*.json")):
         value = read_json(path)
-        if value.get("raw_dataset_version") == "v1":
+        if dataset_version is None or value.get("raw_dataset_version") == dataset_version:
             candidates.append((path, value))
     if len(candidates) != 1:
-        raise ValueError(f"expected one raw v1 manifest; found {len(candidates)}")
+        label = f" {dataset_version}" if dataset_version else ""
+        raise ValueError(
+            f"expected one raw{label} manifest; found {len(candidates)}"
+        )
     return candidates[0]
 
 

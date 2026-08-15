@@ -34,6 +34,7 @@ early.
 | Frontend verification | **TASK-12 done** — Vitest, TypeScript, ESLint, production build, dependency audit, clean-install dry run, and dev-server verification |
 | Backend verification | **TASK-13 done** — offline unit suite, focused API/core/RAG/eligibility checks, coverage report, model-free validation, and isolated-environment verification |
 | Production optimization | **TASK-15 implementation complete** — hosted-generator configuration alignment, SSE chat route, static endpoint TTL caches, optional pooled PostgreSQL, liveness/readiness probes, production rate limiting, optional Sentry hook, and opt-in cross-encoder reranking. Provider deployment, secrets, and pgvector population remain operator actions. |
+| v2 artifact recovery | **TASK-16 done** — recollected and validated all 18 registered official sources, restored the 52-row program catalog, rebuilt 264 chunks, and populated the Neon pgvector index. |
 
 ## Deployment Status
 
@@ -48,12 +49,13 @@ early.
 - TASK-13: Backend test verification ✅
 - TASK-14: Deployment documentation ✅
 - TASK-15: Production optimization implementation ✅ (deployment pending)
+- TASK-16: Complete v2 knowledge base and Neon pgvector population ✅
 
 ### Current
 
-Ready for provider deployment to Vercel plus a Python host. Provider deployment,
-real production credentials, and the one-time pgvector population are still
-operator actions.
+Ready for provider deployment to Vercel plus a Python host. The Neon pgvector
+index is populated with the validated v2 knowledge base; provider deployment and
+production-secret configuration remain operator actions.
 
 ### Next
 
@@ -540,3 +542,15 @@ scope), record it here with a short reason._
   environment files, keys, certificates, virtual environments, caches, and
   generated frontend artifacts. Marked the project ready for provider
   deployment; no real credentials or external deployment state were added.
+- **2026-08-16** — TASK-16 completed. Recollected all 18 registered official DIU
+  sources into a new immutable v2 raw snapshot (18 successful, zero failures),
+  with raw integrity validation passing without errors, warnings, duplicate
+  hashes, or privacy findings. Fixed the cleaner's stale v1-only manifest
+  selector by adding explicit dataset-version selection and regression coverage.
+  Cleaned v2 validation passed for all 18 records; the dynamic programs source
+  produced 52 official catalog rows and chunking produced 264 chunks. Rebuilt the
+  configured Neon pgvector index atomically to 264 rows and verified Textile
+  Engineering retrieval plus `/api/programs` returning 52 programs. Full offline
+  backend suite: 329 passed, 41 integration tests deselected. Generated data and
+  credentials remain ignored; no admission facts, rules, eligibility logic, or
+  model code changed.

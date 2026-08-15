@@ -67,7 +67,26 @@ def test_cleaned_validator_detects_record_tampering(tmp_path: Path) -> None:
     assert any("hash mismatch" in error for error in validation["errors"])
 
 
-def _raw_fixture(tmp_path: Path) -> tuple[Path, Path]:
+def test_cleaning_selects_requested_v2_manifest(tmp_path: Path) -> None:
+    raw_root, registry_path = _raw_fixture(tmp_path, dataset_version="v2")
+    output_root = tmp_path / "cleaned"
+
+    build_cleaned_dataset(
+        raw_root=raw_root,
+        output_root=output_root,
+        registry_path=registry_path,
+        near_duplicate_threshold=0.92,
+        project_root=PROJECT_ROOT,
+        dataset_version="v2",
+    )
+
+    record = json.loads((output_root / "records/test-001.json").read_text())
+    assert record["raw_dataset_version"] == "v2"
+
+
+def _raw_fixture(
+    tmp_path: Path, *, dataset_version: str = "v1"
+) -> tuple[Path, Path]:
     registry_path = tmp_path / "source_registry.csv"
     registry_path.write_text(
         "source_id,url,page_title,category,program,faculty,priority,dynamic_page,"
@@ -121,7 +140,7 @@ def _raw_fixture(tmp_path: Path) -> tuple[Path, Path]:
         "priority": source.priority,
         "program": source.program,
         "raw_content_hash": digest,
-        "raw_dataset_version": "v1",
+        "raw_dataset_version": dataset_version,
         "raw_path": raw_path.as_posix(),
         "response_bytes": len(raw_bytes),
         "retrieved_at": "2026-08-12T00:00:01.000000Z",
@@ -139,7 +158,7 @@ def _raw_fixture(tmp_path: Path) -> tuple[Path, Path]:
     run_path.write_text(
         json.dumps(
             {
-                "raw_dataset_version": "v1",
+                "raw_dataset_version": dataset_version,
                 "dataset_status": "complete",
                 "run": {
                     "run_id": "run-fixture",
