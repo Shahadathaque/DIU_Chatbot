@@ -1,19 +1,29 @@
 # Python
 __pycache__/
 *.py[cod]
+*.pyc
 *.egg-info/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.cache/
 .coverage
 htmlcov/
 .venv/
+.venv*/
 venv/
+venv*/
+env/
+ENV/
 
 # Environment and credentials
 .env
+.env.local
+.env.*.local
 .env.*
 !**/.env.example
+*.key
+*.pem
 
 # Data and model artifacts (retain directory placeholders)
 data/raw/*

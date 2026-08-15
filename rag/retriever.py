@@ -6,7 +6,7 @@ import re
 import unicodedata
 import math
 from collections import Counter
-from typing import Iterable, List, Optional, Sequence
+from typing import Any, Iterable, List, Optional, Sequence
 
 from rag.config import RagSettings, get_rag_settings
 from rag.embeddings import Embedder, SentenceTransformerEmbedder
@@ -247,6 +247,7 @@ class Retriever:
         min_relevance_score: float = 0.72,
         candidate_multiplier: int = 5,
         max_results_per_source: int = 2,
+        reranker: Optional[Any] = None,
     ) -> None:
         if candidate_multiplier < 1:
             raise ValueError("candidate_multiplier must be positive")
@@ -276,6 +277,7 @@ class Retriever:
         self.min_relevance_score = min_relevance_score
         self.candidate_multiplier = candidate_multiplier
         self.max_results_per_source = max_results_per_source
+        self.reranker = reranker
 
     def retrieve(
         self,
@@ -401,9 +403,22 @@ class Retriever:
             self._rerank(normalized, match, intent_query=intent_query)
             for match in candidates
         ]
+        reranker_scores = (
+            self.reranker.score(
+                normalized,
+                [result.chunk.content for result in ranked],
+            )
+            if self.reranker is not None and ranked
+            else []
+        )
+        cross_scores = {
+            result.chunk.chunk_id: float(score)
+            for result, score in zip(ranked, reranker_scores)
+        }
         ranked.sort(
             key=lambda result: (
                 *self._authority_rank(result.chunk),
+                -cross_scores.get(result.chunk.chunk_id, 0.0),
                 -result.relevance_score,
                 -self._topic_bonus(intent_query, result.chunk.category),
                 -self._metadata_bonus(intent_query, result.chunk),
@@ -646,6 +661,9 @@ def create_retriever(settings: Optional[RagSettings] = None) -> Retriever:
         batch_size=settings.embedding_batch_size,
         device=settings.embedding_device,
     )
+    reranker = None
+    if settings.rag_reranker_enabled:
+        reranker = CrossEncoderReranker(settings.rag_reranker_model_name)
     return Retriever(
         embedder,
         store,
@@ -653,7 +671,26 @@ def create_retriever(settings: Optional[RagSettings] = None) -> Retriever:
         min_relevance_score=settings.rag_min_relevance_score,
         candidate_multiplier=settings.rag_candidate_multiplier,
         max_results_per_source=settings.rag_max_results_per_source,
+        reranker=reranker,
     )
+
+
+class CrossEncoderReranker:
+    """Lazy optional cross-encoder used only when explicitly enabled."""
+
+    def __init__(self, model_name: str) -> None:
+        self.model_name = model_name
+        self._model: Any = None
+
+    def score(self, query: str, documents: Sequence[str]) -> List[float]:
+        if self._model is None:
+            from sentence_transformers import CrossEncoder
+
+            self._model = CrossEncoder(self.model_name)
+        return [
+            float(score)
+            for score in self._model.predict([(query, document) for document in documents])
+        ]
 
 
 def retrieve(

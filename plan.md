@@ -14,7 +14,7 @@ early.
 | Area | Status |
 | --- | --- |
 | Scraping (Phase 4) | Done — registry-driven, robots/rate-limit respecting, 18 audited sources |
-| Cleaning (Phase 5) | Done — traceable cleaned v1 records, validation passes |
+| Cleaning (Phase 5) | Done — traceable cleaned v2 records, validation passes |
 | RAG chunking | Done — `rag/chunker.py`, integrity-checked manifest, tables + PDF pages |
 | Embeddings | Done — `intfloat/multilingual-e5-base` (768-d) via `rag/embeddings.py` |
 | Vector store | Done — pgvector (production) + JSON/in-memory (dev/test) |
@@ -25,6 +25,41 @@ early.
 | Frontend | **TASK-04 + TASK-DEMO done** — real backend wiring plus six-turn chat history in normal and retry payloads; CORS, program-driven eligibility dropdown, backend errors, and mocks retained |
 | Fine-tuning | **Not started** (research phase) |
 | Evaluation | **M5 done (TASK-05A + M5-B)** — held-out v1 dataset (150 q), deterministic metrics, retrieval Recall@K/Precision@K/MRR, eligibility real+synthetic tiers, base vs base+RAG generation at temperature=0.0; report at `results/evaluation/v1/report.md` |
+| Reproducible setup | **TASK-06 done** — one bootstrap command, checksum/provenance artifact checker, offline unit-test default, explicit integration marker, and validation-before-model safeguards |
+| Frontend deployment | **TASK-07 done** — environment-based API URL, Vercel build configuration, and Web Analytics integration |
+| Backend deployment | **TASK-08 done** — production environment variables, external endpoint settings, PostgreSQL/CORS configuration, and startup validation |
+| Request validation | **TASK-09 done** — contract-shaped 422 handling, validation-before-dependency tests, and explicit read-only endpoint semantics |
+| Production health | **TASK-10 done** — safe startup diagnostics, production validation logging, detailed `/api/health` checks, and restart/monitoring documentation |
+| Vercel CORS | **TASK-11 done** — exact multi-origin parsing, credentials/preflight verification, unauthorized-origin rejection, and deployment troubleshooting documentation |
+| Frontend verification | **TASK-12 done** — Vitest, TypeScript, ESLint, production build, dependency audit, clean-install dry run, and dev-server verification |
+| Backend verification | **TASK-13 done** — offline unit suite, focused API/core/RAG/eligibility checks, coverage report, model-free validation, and isolated-environment verification |
+| Production optimization | **TASK-15 implementation complete** — hosted-generator configuration alignment, SSE chat route, static endpoint TTL caches, optional pooled PostgreSQL, liveness/readiness probes, production rate limiting, optional Sentry hook, and opt-in cross-encoder reranking. Provider deployment, secrets, and pgvector population remain operator actions. |
+
+## Deployment Status
+
+### Completed
+
+- TASK-07: Frontend environment setup ✅
+- TASK-08: Backend environment configuration ✅
+- TASK-09: Request validation (422 responses) ✅
+- TASK-10: Production startup and health check ✅
+- TASK-11: CORS configuration ✅
+- TASK-12: Frontend test verification ✅
+- TASK-13: Backend test verification ✅
+- TASK-14: Deployment documentation ✅
+- TASK-15: Production optimization implementation ✅ (deployment pending)
+
+### Current
+
+Ready for provider deployment to Vercel plus a Python host. Provider deployment,
+real production credentials, and the one-time pgvector population are still
+operator actions.
+
+### Next
+
+Deploy the backend, set its production environment variables, deploy the
+frontend with the backend URL, run post-deployment health/API checks, and then
+monitor production logs before beginning further research work.
 
 ### Key gaps blocking a complete product
 1. ~~No chat endpoint — the retriever exists but is never called from the API.~~ **Resolved in TASK-01** (`/api/chat` now calls the retriever).
@@ -436,3 +471,72 @@ scope), record it here with a short reason._
   viva questions, current limitation, and a one-minute summary. All statements were
   checked against the current frontend, API contract, configuration, and tests.
   Frontend Vitest: 27 passed. No application functionality or research result changed.
+- **2026-08-16** — TASK-06 completed. Added `scripts/bootstrap.sh` as the single
+  repeatable setup command and `scripts/artifacts.py` as a no-network artifact
+  checker. Raw/cleaned manifests, local KB metadata/entries, and held-out
+  evaluation provenance are validated before use; recovery commands explicitly
+  use the existing checksum/provenance validators. Added the `integration` pytest
+  marker with an offline unit-test default, skipped artifact-dependent tests with
+  actionable recovery guidance, ignored supported virtual-environment names, and
+  prevented invalid chat requests from constructing retriever/generator services.
+  Missing cleaned data now returns a contract-shaped 503 with recovery details.
+  Updated README, API contract, evaluation manifest path, and this plan. No
+  admission facts, rules, model weights, datasets, or research results changed.
+- **2026-08-16** — TASK-07 completed. Added Vercel's supported Next.js deployment
+  settings under `frontend/vercel.json`, made `NEXT_PUBLIC_API_URL` and mock mode
+  explicit build-time configuration in `next.config.ts`, hardened API URL
+  normalization, and documented local versus Vercel environment values. Added
+  the official `@vercel/analytics` component to the root layout; Web Analytics
+  still requires enabling the project in the Vercel dashboard. Existing mock mode,
+  API contracts, admission logic, RAG behavior, and model code were unchanged.
+- **2026-08-16** — TASK-08 completed. Added backend deployment settings for
+  PostgreSQL, OpenAI-compatible model endpoints, model/embedding names, HF tokens,
+  and comma-separated production CORS origins. Added startup validation that stops
+  production when `DATABASE_URL`, `OPENAI_API_BASE`, or `CORS_ORIGINS` is missing;
+  development remains permissive. Added `backend/.env.example`, CORS credentials,
+  README deployment instructions, and focused configuration tests. Admission
+  logic, eligibility rules, RAG behavior, model code, and secrets were unchanged.
+- **2026-08-16** — TASK-09 completed. Verified FastAPI validates chat and
+  eligibility request bodies before resolving model-backed dependencies, normalized
+  validation field names in the shared error envelope, and added comprehensive
+  422/no-initialization tests. Documented that programs and sources are bodyless
+  GET endpoints, so unsupported methods return 405 rather than inventing required
+  fields or changing the API contract. No admission, eligibility, or RAG behavior
+  was changed.
+- **2026-08-16** — TASK-10 completed. Added safe startup diagnostics for
+  environment, CORS, database, model endpoint, RAG backend, and UTC timestamp;
+  production validation now logs the specific missing setting before failing.
+  Expanded `/api/health` (with `/health` compatibility) to return liveness,
+  environment, timestamp, and bounded database/model/RAG dependency checks.
+  Documented production startup, verification, common configuration errors,
+  monitoring, and restart procedures. Added focused health and startup-log
+  coverage. No admission logic, eligibility rules, RAG behavior, model code,
+  credentials, or secrets were changed.
+- **2026-08-16** — TASK-11 completed. Verified the existing restrictive CORS
+  middleware accepts comma-separated exact origins, allows `GET`, `POST`, and
+  `OPTIONS`, enables credentials, and rejects unauthorized origins without an
+  allow-origin header. Added dedicated preflight, header, method, credential,
+  and multi-origin parsing tests; documented localhost, Vercel/custom-domain
+  deployment values, restart steps, and troubleshooting. No backend origin was
+  exposed in frontend code and wildcard production CORS was not enabled.
+- **2026-08-16** — TASK-12 completed. Frontend Vitest (14 tests), TypeScript
+  typecheck, ESLint, and the Next.js 16.3.0 production build all passed. npm
+  audit found zero vulnerabilities and `npm ci --dry-run` succeeded. The
+  already-running development server served the root page on localhost:3000;
+  a second server was not started because port 3000 was occupied. The build
+  root was scoped to the frontend project to remove an unrelated parent
+  lockfile warning. No frontend behavior or backend/admission logic was changed.
+- **2026-08-16** — TASK-13 completed. Offline backend verification passed with
+  320 unit tests and 41 integration tests deselected; API, core, eligibility,
+  RAG, cleaning, invalid-request, and admission-integrity subsets all passed.
+  Added health dependency-path tests so backend API coverage is 87%; core is
+  100%, eligibility is 90%, and RAG is 77%. Isolated execution with model/cache
+  variables unset passed, and no secrets appeared in test output. Coverage
+  tooling was installed only in the local virtual environment; no dependency
+  manifest or application behavior changed.
+- **2026-08-16** — TASK-14 completed. Added complete Vercel/backend deployment
+  instructions, an operator checklist, environment-variable reference,
+  troubleshooting guide, and deployment summary. Verified ignore rules cover
+  environment files, keys, certificates, virtual environments, caches, and
+  generated frontend artifacts. Marked the project ready for provider
+  deployment; no real credentials or external deployment state were added.

@@ -5,6 +5,8 @@ from __future__ import annotations
 import re
 from typing import Any, Dict, Iterable, List, Optional, Sequence
 
+from backend.core.errors import ArtifactUnavailableError
+from backend.core.cache import TTLCache
 from backend.models.programs import Program, ProgramsResponse
 from rag.chunker import load_cleaned_records
 from rag.config import get_rag_settings
@@ -17,6 +19,8 @@ def _degree_from_name(name: str) -> Optional[str]:
     return None
 _SLUG_KEEP = re.compile(r"[^a-z0-9]+")
 _MAJOR_IN_PATTERN = re.compile(r"^major in\b", re.IGNORECASE)
+
+_PROGRAMS_CACHE: TTLCache[ProgramsResponse] = TTLCache()
 
 # Ordered prefix rules: the first match wins, so specific degrees must precede
 # their generic fallbacks (for example "Bachelor of Business Administration"
@@ -72,6 +76,12 @@ class ProgramsService:
         self._cleaned_root = cleaned_root
 
     def list_programs(self) -> ProgramsResponse:
+        # Injected records are used by tests and callers that intentionally
+        # provide a snapshot; only the default cleaned snapshot is cached.
+        if self._records is None:
+            cached = _PROGRAMS_CACHE.get()
+            if cached is not None:
+                return cached
         records = list(self._records if self._records is not None else self._load_records())
         programs: List[Program] = []
         for record in records:
@@ -84,15 +94,25 @@ class ProgramsService:
                 programs.append(
                     self._program_from_record(record, name=str(record["program"]))
                 )
-        return ProgramsResponse(
+        response = ProgramsResponse(
             programs=self._ensure_unique_ids(
                 self._dedupe(programs, records=records)
             ),
         )
+        if self._records is None:
+            _PROGRAMS_CACHE.set(response)
+        return response
 
     def _load_records(self) -> Sequence[Dict[str, Any]]:
         root = self._cleaned_root or str(get_rag_settings().rag_cleaned_data_path)
-        return load_cleaned_records(root)
+        try:
+            return load_cleaned_records(root)
+        except (OSError, ValueError) as error:
+            raise ArtifactUnavailableError(
+                artifact="cleaned DIU dataset",
+                path=root,
+                recovery="Restore the cleaned snapshot or run scripts/clean_dataset.py.",
+            ) from error
 
     @staticmethod
     def _programs_from_tables(record: Dict[str, Any]) -> List[Program]:

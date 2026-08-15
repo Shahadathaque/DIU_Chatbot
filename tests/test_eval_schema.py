@@ -6,6 +6,8 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.integration
+
 from evaluation.schema import (
     ALLOWED_LANGUAGES,
     ALLOWED_OUTCOMES,

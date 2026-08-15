@@ -165,6 +165,9 @@ class PgVectorStore:
         embedding_dimension: int,
         embedding_model_name: str,
         embedding_model_revision: Optional[str] = None,
+        pool_min_size: int = 1,
+        pool_max_size: int = 4,
+        pool_timeout: float = 10.0,
     ) -> None:
         if not database_url or not database_url.strip():
             raise VectorStoreConfigurationError("DATABASE_URL is required for pgvector")
@@ -176,6 +179,14 @@ class PgVectorStore:
         self.embedding_model_revision = _validated_pgvector_revision(
             embedding_model_revision
         )
+        if pool_min_size < 1 or pool_max_size < pool_min_size:
+            raise VectorStoreConfigurationError(
+                "database pool sizes must satisfy 1 <= min_size <= max_size"
+            )
+        self.pool_min_size = pool_min_size
+        self.pool_max_size = pool_max_size
+        self.pool_timeout = pool_timeout
+        self._pool: Any = None
         self._ready = False
 
     def setup(self, *, rebuild: bool = False) -> None:
@@ -185,7 +196,7 @@ class PgVectorStore:
             _load_pg_dependencies()
         )
         try:
-            with psycopg.connect(self.database_url, row_factory=dict_row) as connection:
+            with self._connection(psycopg, dict_row) as connection:
                 self._setup_connection(
                     connection,
                     rebuild=rebuild,
@@ -361,7 +372,7 @@ class PgVectorStore:
         updated = 0
         deleted = 0
         try:
-            with psycopg.connect(self.database_url, row_factory=dict_row) as connection:
+            with self._connection(psycopg, dict_row) as connection:
                 if rebuild:
                     self._setup_connection(
                         connection,
@@ -477,7 +488,7 @@ class PgVectorStore:
         ).format(fields, table, where_sql)
         vector = Vector(query)
         try:
-            with psycopg.connect(self.database_url, row_factory=dict_row) as connection:
+            with self._connection(psycopg, dict_row) as connection:
                 register_vector(connection)
                 with connection.cursor() as cursor:
                     cursor.execute(
@@ -505,7 +516,7 @@ class PgVectorStore:
             _load_pg_dependencies()
         )
         try:
-            with psycopg.connect(self.database_url, row_factory=dict_row) as connection:
+            with self._connection(psycopg, dict_row) as connection:
                 register_vector(connection)
                 with connection.cursor() as cursor:
                     cursor.execute(
@@ -522,6 +533,36 @@ class PgVectorStore:
     def _ensure_setup(self) -> None:
         if not self._ready:
             self.setup()
+
+    def _connection(self, psycopg: Any, dict_row: Any) -> Any:
+        """Return a pooled connection when psycopg_pool is installed.
+
+        A direct connection remains the safe development/test fallback. The
+        deployment requirements include the pool extra so Neon/pgvector does
+        not pay connection setup cost for every retrieval request.
+        """
+
+        try:
+            from psycopg_pool import ConnectionPool
+        except ImportError:
+            return psycopg.connect(self.database_url, row_factory=dict_row)
+        if self._pool is None:
+            self._pool = ConnectionPool(
+                conninfo=self.database_url,
+                min_size=self.pool_min_size,
+                max_size=self.pool_max_size,
+                timeout=self.pool_timeout,
+                kwargs={"row_factory": dict_row},
+                open=True,
+            )
+        return self._pool.connection()
+
+    def close(self) -> None:
+        """Close the optional pool during graceful process shutdown."""
+
+        if self._pool is not None:
+            self._pool.close()
+            self._pool = None
 
     def _validate_database_metadata(self, metadata: Optional[Dict[str, Any]]) -> None:
         if metadata is None:
@@ -890,6 +931,9 @@ def create_vector_store(settings: Optional[RagSettings] = None) -> VectorStore:
     return PgVectorStore(
         resolved.database_url,
         table_name=resolved.rag_table_name,
+        pool_min_size=resolved.db_pool_min_size,
+        pool_max_size=resolved.db_pool_max_size,
+        pool_timeout=resolved.db_pool_timeout,
         **common,
     )
 

@@ -70,3 +70,15 @@ def test_sources_empty_records_returns_empty_list() -> None:
     assert response.status_code == 200
     assert response.json() == {"sources": []}
     _reset_overrides()
+
+
+def test_missing_cleaned_dataset_returns_recovery_error(tmp_path) -> None:
+    service = SourcesService(cleaned_root=str(tmp_path / "missing-cleaned"))
+    client = _client(service)
+
+    response = client.get("/api/sources")
+
+    assert response.status_code == 503
+    assert response.json()["error"]["code"] == "artifact_unavailable"
+    assert "cleaned" in response.json()["error"]["message"]
+    _reset_overrides()

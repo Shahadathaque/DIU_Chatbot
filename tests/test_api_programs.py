@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from fastapi.testclient import TestClient
+import pytest
 
 from backend.api.programs import get_programs_service
 from backend.main import app
@@ -86,6 +87,18 @@ def test_programs_empty_records_returns_empty_list() -> None:
 
     assert response.status_code == 200
     assert response.json() == {"programs": []}
+    _reset_overrides()
+
+
+def test_missing_cleaned_dataset_returns_recovery_error(tmp_path) -> None:
+    service = ProgramsService(cleaned_root=str(tmp_path / "missing-cleaned"))
+    client = _client(service)
+
+    response = client.get("/api/programs")
+
+    assert response.status_code == 503
+    assert response.json()["error"]["code"] == "artifact_unavailable"
+    assert "cleaned" in response.json()["error"]["message"]
     _reset_overrides()
 
 
@@ -237,6 +250,7 @@ def test_official_catalog_includes_non_sit_programs_with_faculty() -> None:
     _reset_overrides()
 
 
+@pytest.mark.integration
 def test_real_cleaned_data_has_unique_and_stable_ids() -> None:
     first = ProgramsService().list_programs()
     second = ProgramsService().list_programs()

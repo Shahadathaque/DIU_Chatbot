@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from fastapi.testclient import TestClient
+import backend.api.chat as chat_api
 
 from backend.api.chat import get_chat_service
 from backend.core.errors import ApiError
@@ -18,7 +19,9 @@ def test_backend_starts_and_health_is_ok() -> None:
     client = TestClient(app)
     response = client.get("/health")
     assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
+    body = response.json()
+    assert body["status"] == "ok"
+    assert set(body["checks"]) == {"database", "model_endpoint", "rag_backend"}
 
 
 def test_browser_origin_receives_cors_headers() -> None:
@@ -32,6 +35,7 @@ def test_browser_origin_receives_cors_headers() -> None:
         response.headers.get("access-control-allow-origin")
         == "http://localhost:3000"
     )
+    assert response.headers.get("access-control-allow-credentials") == "true"
 
 
 def test_cors_preflight_for_post_allowed() -> None:
@@ -70,6 +74,17 @@ def test_validation_error_uses_contract_shape() -> None:
     assert body["error"]["code"] == "validation_error"
     assert isinstance(body["error"]["details"], list)
     assert body["error"]["details"][0]["field"]
+
+
+def test_invalid_chat_request_does_not_build_production_dependencies(monkeypatch) -> None:
+    def _forbidden():
+        raise AssertionError("invalid requests must not build retriever or generator")
+
+    monkeypatch.setattr(chat_api, "_build_chat_service", _forbidden)
+    response = TestClient(app).post("/api/chat", json={"language": "en"})
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "validation_error"
 
 
 def test_api_error_uses_contract_shape() -> None:

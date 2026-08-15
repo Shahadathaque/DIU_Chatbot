@@ -12,7 +12,12 @@ import {
   SparkleIcon,
   WarningIcon,
 } from "@/components/ui/icons";
-import { ApiError, isMockMode, sendChatMessage } from "@/services/api";
+import {
+  ApiError,
+  isMockMode,
+  sendChatMessage,
+  streamChatMessage,
+} from "@/services/api";
 import { buildChatRequest } from "@/services/chat-request";
 import type {
   ApiSource,
@@ -77,17 +82,44 @@ export function ChatExperience() {
     setIsLoading(true);
 
     try {
-      const response = await sendChatMessage(request);
-      setMessages((current) => [
-        ...current,
-        {
-          id: createId(),
-          role: "assistant",
-          content: response.answer,
-          sources: response.sources,
-          confidence: response.confidence,
-        },
-      ]);
+      if (!isMockMode) {
+        const assistantId = createId();
+        setMessages((current) => [
+          ...current,
+          { id: assistantId, role: "assistant", content: "" },
+        ]);
+        const response = await streamChatMessage(request, (_token, full) => {
+          setMessages((current) =>
+            current.map((item) =>
+              item.id === assistantId ? { ...item, content: full } : item,
+            ),
+          );
+        });
+        setMessages((current) =>
+          current.map((item) =>
+            item.id === assistantId
+              ? {
+                  ...item,
+                  content: response.answer,
+                  sources: response.sources,
+                  confidence: response.confidence,
+                }
+              : item,
+          ),
+        );
+      } else {
+        const response = await sendChatMessage(request);
+        setMessages((current) => [
+          ...current,
+          {
+            id: createId(),
+            role: "assistant",
+            content: response.answer,
+            sources: response.sources,
+            confidence: response.confidence,
+          },
+        ]);
+      }
     } catch (requestError) {
       setError(
         requestError instanceof ApiError

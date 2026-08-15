@@ -61,6 +61,13 @@ export interface ProgramsResponse {
 
 export interface HealthResponse {
   status: "ok";
+  timestamp?: string;
+  environment?: string;
+  checks?: {
+    database: "ok" | "not_configured" | "error";
+    model_endpoint: "ok" | "not_configured" | "error";
+    rag_backend: "ok" | "not_configured" | "error";
+  };
 }
 
 export interface SourceRecord {

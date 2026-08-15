@@ -12,6 +12,8 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.integration
+
 from eligibility.engine import EligibilityEngine
 from eligibility.loader import load_default_programs, load_default_ruleset
 from eligibility.models import EligibilityInput

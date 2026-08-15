@@ -15,11 +15,13 @@ import type {
   SourcesResponse,
 } from "@/types/api";
 
-const API_URL = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000").replace(
-  /\/$/,
-  "",
-);
+// NEXT_PUBLIC_API_URL is injected at build time for browser bundles. Keep a
+// localhost fallback so mock/local development still works without setup.
+const API_URL = (
+  process.env.NEXT_PUBLIC_API_URL?.trim() || "http://localhost:8000"
+).replace(/\/+$/, "");
 export const REQUEST_TIMEOUT_MS = 90_000;
+export const STREAM_REQUEST_TIMEOUT_MS = 45_000;
 
 export const isMockMode = process.env.NEXT_PUBLIC_USE_MOCK_API !== "false";
 
@@ -108,6 +110,76 @@ export async function sendChatMessage(
   return response;
 }
 
+export async function streamChatMessage(
+  payload: ChatRequest,
+  onToken: (token: string, full: string) => void,
+): Promise<ChatResponse> {
+  if (isMockMode) return sendChatMessage(payload);
+
+  const controller = new AbortController();
+  const timeout = window.setTimeout(
+    () => controller.abort(),
+    STREAM_REQUEST_TIMEOUT_MS,
+  );
+  try {
+    const response = await fetch(`${API_URL}/api/chat/stream`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      throw new ApiError(await extractErrorMessage(response), response.status);
+    }
+    if (!response.body) throw new ApiError("The service returned no stream.");
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let completed: ChatResponse | null = null;
+
+    const consume = (block: string) => {
+      let event = "message";
+      const dataLines: string[] = [];
+      for (const line of block.split("\n")) {
+        if (line.startsWith("event:")) event = line.slice(6).trim();
+        if (line.startsWith("data:")) dataLines.push(line.slice(5).trim());
+      }
+      if (!dataLines.length) return;
+      const data = JSON.parse(dataLines.join("\n")) as {
+        token?: string;
+        full?: string;
+        response?: ChatResponse;
+      };
+      if (data.token) onToken(data.token, data.full ?? data.token);
+      if (event === "done" && data.response) completed = data.response;
+    };
+
+    while (true) {
+      const { done, value } = await reader.read();
+      buffer += decoder.decode(value ?? new Uint8Array(), { stream: !done });
+      const blocks = buffer.split("\n\n");
+      buffer = blocks.pop() ?? "";
+      for (const block of blocks) consume(block);
+      if (done) break;
+    }
+    if (buffer.trim()) consume(buffer);
+    const finalResponse = completed as ChatResponse | null;
+    if (!finalResponse || !finalResponse.answer?.trim()) {
+      throw new ApiError("The assistant returned an incomplete answer.");
+    }
+    return finalResponse;
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new ApiError("The request timed out. Please try again.");
+    }
+    throw new ApiError("Could not reach the admission service. Check your connection and try again.");
+  } finally {
+    window.clearTimeout(timeout);
+  }
+}
+
 export async function checkEligibility(
   payload: EligibilityRequest,
 ): Promise<EligibilityResponse> {
@@ -138,7 +210,7 @@ export async function getPrograms(): Promise<ProgramsResponse> {
 export function checkBackendHealth(): Promise<HealthResponse> {
   return isMockMode
     ? mockCheckBackendHealth()
-    : request<HealthResponse>("/health");
+    : request<HealthResponse>("/api/live");
 }
 
 export async function getSources(): Promise<SourcesResponse> {

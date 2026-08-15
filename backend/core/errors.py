@@ -32,6 +32,21 @@ class ApiError(Exception):
         self.details = list(details or [])
 
 
+class ArtifactUnavailableError(ApiError):
+    """Raised when a required private dataset/index is not restored locally."""
+
+    def __init__(self, *, artifact: str, path: str, recovery: str) -> None:
+        super().__init__(
+            status_code=503,
+            code="artifact_unavailable",
+            message=f"The {artifact} is not available on this server.",
+            details=[
+                {"field": "artifact", "message": f"Expected artifact: {path}"},
+                {"field": "recovery", "message": recovery},
+            ],
+        )
+
+
 def _error_payload(
     *,
     code: str,
@@ -56,9 +71,10 @@ def register_exception_handlers(app: FastAPI) -> None:
     ) -> JSONResponse:
         details: List[Dict[str, str]] = []
         for item in exc.errors():
-            field = ".".join(str(part) for part in item.get("loc", ()))
-            if field == "body":
-                field = ""
+            location = list(item.get("loc", ()))
+            if location and location[0] == "body":
+                location = location[1:]
+            field = ".".join(str(part) for part in location)
             message = str(item.get("msg", "Invalid value."))
             details.append({"field": field or "body", "message": message})
         return JSONResponse(

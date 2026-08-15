@@ -45,11 +45,44 @@ Expected HTTP statuses:
 - `400 Bad Request`: malformed JSON or structurally invalid request.
 - `422 Unprocessable Entity`: well-formed request with failed field validation.
 - `500 Internal Server Error`: unexpected server failure; no stack trace or secret is exposed.
-- `503 Service Unavailable`: a required model, database, or downstream service is unavailable.
+- `503 Service Unavailable`: a required model, database, downstream service, or private data artifact is unavailable. Recovery details are included when a local artifact must be restored or rebuilt.
+
+## Request Validation Behavior
+
+FastAPI validates request bodies before resolving endpoint dependencies. For the
+body-based `POST /api/chat` and `POST /api/eligibility` endpoints, invalid JSON
+fields, missing required fields, invalid enum values, empty required strings,
+and out-of-range values return `422 Unprocessable Entity`. The validation
+failure does not construct the chat, retriever, generator, or eligibility
+service, so model and data initialization is not performed for rejected
+requests.
+
+Validation errors use the same contract envelope described above. Field names in
+`error.details[].field` identify the request field without the transport prefix:
+
+```json
+{
+  "error": {
+    "code": "validation_error",
+    "message": "The request could not be validated.",
+    "details": [
+      {
+        "field": "message",
+        "message": "Field required"
+      }
+    ]
+  }
+}
+```
+
+`GET /api/programs` and `GET /api/sources` are read-only endpoints with no
+request body or required request fields. They therefore have no body validation
+case that can return 422; unsupported HTTP methods return `405 Method Not
+Allowed`, while valid GET requests resolve their dataset service normally.
 
 ## Health
 
-### `GET /health`
+### `GET /api/health` (compatibility alias: `GET /health`)
 
 No request body.
 
@@ -57,19 +90,43 @@ Successful response (`200`):
 
 ```json
 {
-  "status": "ok"
+  "status": "ok",
+  "timestamp": "2026-08-16T12:00:00Z",
+  "environment": "production",
+  "checks": {
+    "database": "ok",
+    "model_endpoint": "ok",
+    "rag_backend": "ok"
+  }
 }
 ```
 
 | Field | Type | Required | Validation |
 | --- | --- | --- | --- |
-| `status` | string | yes | Currently the literal value `ok`. |
+| `status` | string | yes | Process liveness; currently the literal value `ok`. |
+| `timestamp` | string | yes | UTC ISO-8601 timestamp ending in `Z`. |
+| `environment` | string | yes | Active application environment. |
+| `checks.database` | string | yes | `ok`, `not_configured`, or `error`. |
+| `checks.model_endpoint` | string | yes | `ok`, `not_configured`, or `error`. |
+| `checks.rag_backend` | string | yes | `ok`, `not_configured`, or `error`. |
+
+The endpoint performs bounded dependency checks when services are configured.
+`not_configured` is expected for optional services in development. A dependency
+failure is reported in `checks` while the process-level liveness response still
+uses HTTP `200`; deployment monitors should alert on individual `error` values.
+
+`GET /api/live` is a fast liveness probe. It returns only `status`, `timestamp`,
+and `environment` and does not contact PostgreSQL or the model provider.
+`GET /api/ready` performs the same bounded dependency checks as `/api/health`.
+Use `/api/live` for frequent wake-up checks and `/api/ready` for deployment
+readiness checks.
 
 ## Chat
 
 ### `POST /api/chat`
 
-This endpoint is contractual only in Phase 2 and is not implemented yet.
+This endpoint is implemented by the FastAPI backend. Retrieval and generation
+are constructed only after the request body passes validation.
 
 Request:
 
@@ -110,11 +167,26 @@ Successful response (`200`; schema example only):
 | `confidence` | string | yes | One of `high`, `medium`, or `low`. |
 | `language` | string | yes | One of `en`, `bn`, or `banglish`. |
 
+### `POST /api/chat/stream`
+
+This additive endpoint accepts the same validated request as `/api/chat` and
+returns `text/event-stream`. Each event contains a partial token:
+
+```text
+data: {"token":"Bring ","full":"Bring "}
+```
+
+The final event is named `done` and contains the normal chat response under
+`response`. Invalid requests still return the contract-shaped `422` JSON error
+before a chat service or model is initialized. Clients that do not support SSE
+should continue using `/api/chat`.
+
 ## Eligibility
 
 ### `POST /api/eligibility`
 
-This endpoint is contractual only in Phase 2 and is not implemented yet. Eligibility must be decided by the backend rule engine, never by the frontend.
+This endpoint is implemented by the FastAPI backend. Eligibility must be
+decided by the backend rule engine, never by the frontend or the LLM.
 
 Request:
 
@@ -163,7 +235,8 @@ Successful response (`200`; schema example only):
 
 ### `GET /api/programs`
 
-This endpoint is contractual only in Phase 2 and is not implemented yet. No request body.
+This endpoint is implemented by the FastAPI backend and derives its catalog from
+the verified cleaned DIU dataset. No request body.
 
 Successful response (`200`; schema example only):
 
@@ -194,7 +267,8 @@ Successful response (`200`; schema example only):
 
 ### `GET /api/sources`
 
-This endpoint is contractual only in Phase 2 and is not implemented yet. No request body.
+This endpoint is implemented by the FastAPI backend and derives its source list
+from the verified cleaned DIU dataset. No request body.
 
 Successful response (`200`; schema example only):
 

@@ -24,7 +24,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 DEFAULT_DATASET_PATH = PROJECT_ROOT / "data" / "evaluation" / "questions.v1.json"
 DEFAULT_KB_PATH = PROJECT_ROOT / "data" / "chunks" / "local_knowledge_base.json"
-DEFAULT_MANIFEST_PATH = PROJECT_ROOT / "data" / "cleaned" / "v1" / "manifest.json"
+DEFAULT_MANIFEST_PATH = PROJECT_ROOT / "data" / "cleaned" / "v2" / "manifest.json"
 
 ALLOWED_LANGUAGES = frozenset({"en", "bn", "banglish"})
 ALLOWED_OUTCOMES = frozenset(

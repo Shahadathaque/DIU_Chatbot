@@ -225,4 +225,34 @@ describe("real-mode API client", () => {
         "Could not reach the admission service. Check your connection and try again.",
     });
   });
+
+  it("parses streamed chat tokens and the final response event", async () => {
+    const { streamChatMessage } = await loadRealApi();
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(encoder.encode('data: {"token":"Hello ","full":"Hello "}\n\n'));
+        controller.enqueue(
+          encoder.encode(
+            'event: done\ndata: {"response":{"answer":"Hello world.","sources":[],"confidence":"high","language":"en"}}\n\n',
+          ),
+        );
+        controller.close();
+      },
+    });
+    installFetchMock({
+      ok: true,
+      status: 200,
+      body: stream as unknown as ReadableStream<Uint8Array<ArrayBuffer>>,
+    });
+    const tokens: string[] = [];
+
+    const response = await streamChatMessage(
+      { message: "Hello", language: "en" },
+      (token) => tokens.push(token),
+    );
+
+    expect(tokens).toEqual(["Hello "]);
+    expect(response.answer).toBe("Hello world.");
+  });
 });
