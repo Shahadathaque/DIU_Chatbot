@@ -428,3 +428,11 @@ scope), record it here with a short reason._
   mode. Pushed `b5ce6d6` (`feat: complete DIU admission assistant demo`) normally
   to `origin/main` with no force or history rewrite. This publication performed no
   feature, eligibility, M5-result, M6, training, or fine-tuning work.
+- **2026-08-15** — TASK-FRONTEND-VIVA-NOTE completed (documentation only). Added
+  `frontendNote.md`, a concise viva-ready description of the implemented frontend:
+  stack and responsibilities, App Router pages, component/service structure, typed
+  mock/real API integration, chat persistence and bounded history, backend-owned
+  eligibility flow, responsive/accessibility behavior, focused test coverage, short
+  viva questions, current limitation, and a one-minute summary. All statements were
+  checked against the current frontend, API contract, configuration, and tests.
+  Frontend Vitest: 27 passed. No application functionality or research result changed.
