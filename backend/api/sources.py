@@ -14,7 +14,7 @@ router = APIRouter(tags=["sources"])
 
 @lru_cache
 def get_sources_service() -> SourcesService:
-    """Build the production sources service from the cleaned dataset."""
+    """Build the environment-configured runtime source service."""
     return SourcesService()
 
 

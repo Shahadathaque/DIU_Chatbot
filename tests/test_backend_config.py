@@ -30,6 +30,12 @@ def test_production_settings_require_deployment_values(field: str, message: str)
         "app_env": "production",
         "database_url": "postgresql://user:password@db.example/diu",
         "openai_api_base": "https://model.example/v1",
+        "runtime_catalog_backend": "database",
+        "rag_vector_backend": "pgvector",
+        "embedding_backend": "openai",
+        "embedding_api_base": "https://model.example/v1",
+        "embedding_api_key": "embedding-secret",
+        "embedding_api_model": "embedding-model",
         "cors_origins": "https://diu.example",
         field: "",
     }
@@ -63,6 +69,11 @@ def test_startup_validation_accepts_valid_production_settings(monkeypatch) -> No
         app_env="production",
         database_url="postgresql://user:password@db.example/diu",
         openai_api_base="https://model.example/v1",
+        runtime_catalog_backend="database",
+        embedding_backend="openai",
+        embedding_api_base="https://model.example/v1",
+        embedding_api_key="embedding-secret",
+        embedding_api_model="embedding-model",
         cors_origins="https://diu.example",
     )
     monkeypatch.setattr(backend_main, "get_settings", lambda: settings)
@@ -82,6 +93,11 @@ def test_production_startup_logs_success_without_secrets(monkeypatch, caplog) ->
         database_url="postgresql://user:super-secret@db.example/diu",
         openai_api_base="https://model.example/v1",
         openai_api_key="api-secret",
+        runtime_catalog_backend="database",
+        embedding_backend="openai",
+        embedding_api_base="https://model.example/v1",
+        embedding_api_key="embedding-secret",
+        embedding_api_model="embedding-model",
         cors_origins="https://diu.example",
     )
     monkeypatch.setattr(backend_main, "get_settings", lambda: settings)
@@ -160,7 +176,45 @@ def test_production_accepts_canonical_generator_settings() -> None:
         generator_backend="openai",
         generator_api_base="https://model.example/v1",
         generator_api_key="provider-secret",
+        runtime_catalog_backend="database",
+        embedding_backend="openai",
+        embedding_api_base="https://model.example/v1",
+        embedding_api_key="embedding-secret",
+        embedding_api_model="embedding-model",
         cors_origins="https://diu.example",
     )
 
     settings.validate_production_settings()
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("runtime_catalog_backend", "local", "RUNTIME_CATALOG_BACKEND=database"),
+        ("rag_vector_backend", "local", "RAG_VECTOR_BACKEND=pgvector"),
+        ("embedding_backend", "local", "EMBEDDING_BACKEND=openai"),
+        ("embedding_api_base", "", "EMBEDDING_API_BASE required"),
+        ("embedding_api_key", "", "EMBEDDING_API_KEY required"),
+        ("embedding_api_model", "", "EMBEDDING_API_MODEL required"),
+    ],
+)
+def test_production_requires_database_catalog_and_hosted_embeddings(
+    field: str, value: str, message: str
+) -> None:
+    values = {
+        "app_env": "production",
+        "database_url": "postgresql://user:password@db.example/diu",
+        "generator_backend": "openai",
+        "generator_api_base": "https://model.example/v1",
+        "runtime_catalog_backend": "database",
+        "rag_vector_backend": "pgvector",
+        "embedding_backend": "openai",
+        "embedding_api_base": "https://model.example/v1",
+        "embedding_api_key": "embedding-secret",
+        "embedding_api_model": "embedding-model",
+        "cors_origins": "https://diu.example",
+        field: value,
+    }
+
+    with pytest.raises(ValueError, match=message):
+        Settings(_env_file=None, **values).validate_production_settings()

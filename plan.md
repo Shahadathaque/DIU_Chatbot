@@ -35,6 +35,7 @@ early.
 | Backend verification | **TASK-13 done** — offline unit suite, focused API/core/RAG/eligibility checks, coverage report, model-free validation, and isolated-environment verification |
 | Production optimization | **TASK-15 implementation complete** — hosted-generator configuration alignment, SSE chat route, static endpoint TTL caches, optional pooled PostgreSQL, liveness/readiness probes, production rate limiting, optional Sentry hook, and opt-in cross-encoder reranking. Provider deployment, secrets, and pgvector population remain operator actions. |
 | v2 artifact recovery | **TASK-16 done** — recollected and validated all 18 registered official sources, restored the 52-row program catalog, rebuilt 264 chunks, and populated the Neon pgvector index. |
+| Hosted deployment runtime | **TASK-17 done** — Neon-backed runtime program/source catalogs, hosted OpenAI-compatible embeddings, strict production backend selection, slim container requirements, and Render deployment blueprint. Neon catalog is populated; provider key, hosted-vector rebuild, and external deploy remain operator actions. |
 
 ## Deployment Status
 
@@ -50,18 +51,20 @@ early.
 - TASK-14: Deployment documentation ✅
 - TASK-15: Production optimization implementation ✅ (deployment pending)
 - TASK-16: Complete v2 knowledge base and Neon pgvector population ✅
+- TASK-17: Neon runtime catalog and hosted backend preparation ✅ (provider deployment pending)
 
 ### Current
 
-Ready for provider deployment to Vercel plus a Python host. The Neon pgvector
-index is populated with the validated v2 knowledge base; provider deployment and
-production-secret configuration remain operator actions.
+The Neon runtime catalog is populated with 52 programs and 18 official sources.
+The lightweight hosted backend is prepared, but chat deployment requires a
+provider API key, rebuilding the 264 chunks into the configured hosted embedding
+table, and performing the provider deployment.
 
 ### Next
 
-Deploy the backend, set its production environment variables, deploy the
-frontend with the backend URL, run post-deployment health/API checks, and then
-monitor production logs before beginning further research work.
+Create the hosted-model key, rebuild the hosted embedding table, deploy the
+backend from `render.yaml`, set the Vercel API URL/CORS origin, and run the
+post-deployment checks before beginning further research work.
 
 ### Key gaps blocking a complete product
 1. ~~No chat endpoint — the retriever exists but is never called from the API.~~ **Resolved in TASK-01** (`/api/chat` now calls the retriever).
@@ -554,3 +557,21 @@ scope), record it here with a short reason._
   backend suite: 329 passed, 41 integration tests deselected. Generated data and
   credentials remain ignored; no admission facts, rules, eligibility logic, or
   model code changed.
+- **2026-08-16** — TASK-17 completed. Added an idempotent, transactional Neon
+  runtime catalog with program/source provenance and dataset metadata, plus a
+  validated synchronization command. Synchronized and independently verified 52
+  programs and 18 official sources in Neon; local development now uses the
+  database catalog while production is prohibited from silently reading local
+  cleaned files. Added an OpenAI-compatible hosted embedding adapter shared by
+  indexing and retrieval, strict model/dimension metadata compatibility, and
+  production validation requiring Neon catalogs, pgvector, hosted generation,
+  and hosted embeddings. Added a slim `requirements-deploy.txt`, Dockerfile,
+  `.dockerignore`, and Render blueprint without local model/scraper/training
+  dependencies, plus updated environment/deployment documentation and tests.
+  Verification: 346 backend tests passed offline (41 integrations deselected),
+  frontend Vitest 15 passed, TypeScript/ESLint/build passed, Neon catalog API
+  smoke test returned 52 programs and 18 sources, and dependency/compile/diff
+  checks passed. Actual hosted-vector creation and provider deployment remain
+  manual because no hosted-model key or authorized backend-provider session was
+  supplied. No admission facts, eligibility rules, research results, credentials,
+  or generated datasets were committed.

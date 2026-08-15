@@ -1,0 +1,45 @@
+services:
+  - type: web
+    name: diu-admission-api
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/live
+    autoDeployTrigger: commit
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: LOG_LEVEL
+        value: INFO
+      - key: DATABASE_URL
+        sync: false
+      - key: RUNTIME_CATALOG_BACKEND
+        value: database
+      - key: RAG_VECTOR_BACKEND
+        value: pgvector
+      - key: RAG_TABLE_NAME
+        value: diu_knowledge_chunks_hosted
+      - key: DB_POOL_MIN_SIZE
+        value: "1"
+      - key: DB_POOL_MAX_SIZE
+        value: "2"
+      - key: GENERATOR_BACKEND
+        value: openai
+      - key: GENERATOR_API_BASE
+        value: https://generativelanguage.googleapis.com/v1beta/openai/
+      - key: GENERATOR_API_KEY
+        sync: false
+      - key: GENERATOR_API_MODEL
+        sync: false
+      - key: EMBEDDING_BACKEND
+        value: openai
+      - key: EMBEDDING_API_BASE
+        value: https://generativelanguage.googleapis.com/v1beta/openai/
+      - key: EMBEDDING_API_KEY
+        sync: false
+      - key: EMBEDDING_API_MODEL
+        sync: false
+      - key: EMBEDDING_DIMENSION
+        value: "768"
+      - key: CORS_ORIGINS
+        sync: false

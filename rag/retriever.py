@@ -9,7 +9,7 @@ from collections import Counter
 from typing import Any, Iterable, List, Optional, Sequence
 
 from rag.config import RagSettings, get_rag_settings
-from rag.embeddings import Embedder, SentenceTransformerEmbedder
+from rag.embeddings import Embedder, create_embedder
 from rag.models import KnowledgeChunk, SearchFilters, SearchResult, VectorMatch
 from rag.vector_store import VectorStore, create_vector_store
 
@@ -654,12 +654,11 @@ def create_retriever(settings: Optional[RagSettings] = None) -> Retriever:
     settings = settings or get_rag_settings()
     store = create_vector_store(settings)
     store.setup()
-    embedder = SentenceTransformerEmbedder(
-        store.embedding_model_name,
-        expected_dimension=store.embedding_dimension,
+    embedder = create_embedder(
+        settings,
+        model_name=store.embedding_model_name,
         model_revision=store.embedding_model_revision,
-        batch_size=settings.embedding_batch_size,
-        device=settings.embedding_device,
+        dimension=store.embedding_dimension,
     )
     reranker = None
     if settings.rag_reranker_enabled:

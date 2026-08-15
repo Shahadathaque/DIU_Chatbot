@@ -21,7 +21,12 @@ def test_health_returns_ok() -> None:
     assert body["status"] == "ok"
     assert body["environment"]
     assert body["timestamp"].endswith("Z")
-    assert set(body["checks"]) == {"database", "model_endpoint", "rag_backend"}
+    assert set(body["checks"]) == {
+        "database",
+        "model_endpoint",
+        "rag_backend",
+        "runtime_catalog",
+    }
     assert all(
         value in {"ok", "not_configured", "error"}
         for value in body["checks"].values()
@@ -161,3 +166,26 @@ def test_rag_health_check_reports_pgvector_and_unknown_backends(monkeypatch) -> 
         lambda: SimpleNamespace(rag_vector_backend="other", database_url=None),
     )
     assert health_api._check_rag_backend() == "error"
+
+
+def test_runtime_catalog_health_uses_database_repository(monkeypatch) -> None:
+    monkeypatch.setattr(
+        health_api,
+        "get_settings",
+        lambda: SimpleNamespace(
+            runtime_catalog_backend="database",
+            database_url="postgresql://db.example/diu",
+        ),
+    )
+
+    class FakeRepository:
+        def __init__(self, database_url, connect_timeout):
+            assert database_url == "postgresql://db.example/diu"
+            assert connect_timeout == 2
+
+        def is_ready(self):
+            return True
+
+    monkeypatch.setattr(health_api, "RuntimeCatalogRepository", FakeRepository)
+
+    assert health_api._check_runtime_catalog() == "ok"

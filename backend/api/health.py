@@ -10,6 +10,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 
 from backend.core.config import get_settings
+from backend.repositories.runtime_catalog import RuntimeCatalogRepository
 from rag.config import get_rag_settings
 from rag.config import get_generator_settings
 
@@ -23,6 +24,7 @@ class HealthChecks(BaseModel):
     database: HealthCheckStatus
     model_endpoint: HealthCheckStatus
     rag_backend: HealthCheckStatus
+    runtime_catalog: HealthCheckStatus
 
 
 class HealthResponse(BaseModel):
@@ -84,6 +86,22 @@ def _check_rag_backend() -> HealthCheckStatus:
     return "error"
 
 
+def _check_runtime_catalog() -> HealthCheckStatus:
+    settings = get_settings()
+    if settings.runtime_catalog_backend == "local":
+        try:
+            return "ok" if get_rag_settings().rag_cleaned_data_path.is_dir() else "error"
+        except Exception:
+            return "error"
+    if not settings.database_url:
+        return "not_configured"
+    return (
+        "ok"
+        if RuntimeCatalogRepository(settings.database_url, connect_timeout=2).is_ready()
+        else "error"
+    )
+
+
 async def _health_response() -> HealthResponse:
     settings = get_settings()
     try:
@@ -101,6 +119,7 @@ async def _health_response() -> HealthResponse:
             database=_check_database(settings.database_url),
             model_endpoint=_check_model_endpoint(model_base, model_key),
             rag_backend=_check_rag_backend(),
+            runtime_catalog=_check_runtime_catalog(),
         ),
     )
 

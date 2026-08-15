@@ -90,6 +90,31 @@ def test_programs_empty_records_returns_empty_list() -> None:
     _reset_overrides()
 
 
+def test_programs_database_backend_does_not_load_local_files(monkeypatch) -> None:
+    class FakeRepository:
+        def list_programs(self):
+            return [
+                {
+                    "id": "cse",
+                    "name": "B. Sc. in Computer Science and Engineering",
+                    "degree": "B.Sc.",
+                    "faculty": "Science and Information Technology",
+                    "admission_url": "https://daffodilvarsity.edu.bd/programs",
+                }
+            ]
+
+    service = ProgramsService(repository=FakeRepository())
+    monkeypatch.setattr(
+        service,
+        "_load_records",
+        lambda: (_ for _ in ()).throw(AssertionError("local files must not load")),
+    )
+
+    response = service.list_programs()
+
+    assert [program.id for program in response.programs] == ["cse"]
+
+
 def test_missing_cleaned_dataset_returns_recovery_error(tmp_path) -> None:
     service = ProgramsService(cleaned_root=str(tmp_path / "missing-cleaned"))
     client = _client(service)

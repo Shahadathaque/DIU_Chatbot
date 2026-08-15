@@ -334,14 +334,39 @@ branch.
 
 ### Backend deployment
 
-Railway is the simplest Git-based option; Fly.io provides multi-region control;
-Render and similar Python hosts are also supported. For any provider:
+The committed `Dockerfile` uses `requirements-deploy.txt`, which intentionally
+excludes PyTorch, Transformers, SentenceTransformers, scraping, PDF, and training
+dependencies. Render can deploy the included `render.yaml`; other container hosts
+can build the same Dockerfile.
+
+Before deployment, synchronize the runtime catalog from the private validated
+snapshot on the development machine:
+
+```bash
+.venv311/bin/python scripts/sync_runtime_catalog.py --dry-run
+.venv311/bin/python scripts/sync_runtime_catalog.py
+```
+
+Then configure the hosted embedding provider and rebuild all chunks into a new
+table. Document and query embeddings must use the identical model and dimension:
+
+```bash
+EMBEDDING_BACKEND=openai \
+EMBEDDING_API_BASE=https://provider.example/v1 \
+EMBEDDING_API_KEY=your-secret \
+EMBEDDING_API_MODEL=your-embedding-model \
+EMBEDDING_DIMENSION=768 \
+RAG_TABLE_NAME=diu_knowledge_chunks_hosted \
+.venv311/bin/python scripts/build_knowledge_base.py --rebuild
+```
+
+For any backend provider:
 
 1. Create an account and connect this GitHub repository.
 2. Add the production variables listed in [ENV_VARIABLES.md](ENV_VARIABLES.md),
-   including `APP_ENV=production`, PostgreSQL `DATABASE_URL`,
-   `GENERATOR_BACKEND=openai`, `GENERATOR_API_BASE`, `GENERATOR_API_KEY` when
-   required, and the Vercel origin in
+   including `APP_ENV=production`, `RUNTIME_CATALOG_BACKEND=database`,
+   PostgreSQL `DATABASE_URL`, hosted generator and embedding variables,
+   `RAG_TABLE_NAME=diu_knowledge_chunks_hosted`, and the Vercel origin in
    `CORS_ORIGINS`.
 3. Set the deploy/start command:
 
@@ -373,7 +398,7 @@ fetch('https://your-backend.example/api/health', { credentials: 'include' })
   .catch((error) => console.error('❌ Error:', error));
 ```
 
-The backend must report HTTP `200`, and the response checks should match the
-configured database, model endpoint, and RAG backend. If the frontend cannot
+The backend must report HTTP `200`, and readiness should report the database,
+runtime catalog, model endpoint, and RAG backend as `ok`. If the frontend cannot
 connect, verify `NEXT_PUBLIC_API_URL`, exact `CORS_ORIGINS`, provider logs, and
 restart the backend after environment changes.

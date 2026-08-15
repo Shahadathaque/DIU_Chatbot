@@ -1,10 +1,18 @@
 from __future__ import annotations
 
+import json
 from typing import Any, Dict, List, Sequence
 
+import httpx
 import pytest
 
-from rag.embeddings import SentenceTransformerEmbedder
+from rag.config import RagSettings
+from rag.embeddings import (
+    EmbeddingUnavailableError,
+    OpenAICompatibleEmbedder,
+    SentenceTransformerEmbedder,
+    create_embedder,
+)
 
 
 class FakeSentenceTransformer:
@@ -51,3 +59,82 @@ def test_embedder_rejects_configured_dimension_mismatch() -> None:
             expected_dimension=768,
             model=FakeSentenceTransformer(dimension=3),
         )
+
+
+def test_openai_compatible_embedder_batches_normalizes_and_authenticates() -> None:
+    captured: list[dict[str, Any]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        captured.append(
+            {
+                "url": str(request.url),
+                "authorization": request.headers.get("Authorization"),
+                "body": body,
+            }
+        )
+        return httpx.Response(
+            200,
+            json={
+                "data": [
+                    {"index": index, "embedding": [3.0, 4.0]}
+                    for index, _text in enumerate(body["input"])
+                ]
+            },
+        )
+
+    embedder = OpenAICompatibleEmbedder(
+        api_base="https://model.example/v1/",
+        api_key="secret",
+        model_name="hosted-embedding",
+        dimension=2,
+        batch_size=2,
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    assert embedder.embed_documents(["one", "two", "three"]) == [
+        [0.6, 0.8],
+        [0.6, 0.8],
+        [0.6, 0.8],
+    ]
+    assert len(captured) == 2
+    assert captured[0]["url"] == "https://model.example/v1/embeddings"
+    assert captured[0]["authorization"] == "Bearer secret"
+    assert captured[0]["body"] == {
+        "model": "hosted-embedding",
+        "input": ["one", "two"],
+        "dimensions": 2,
+    }
+
+
+def test_openai_compatible_embedder_rejects_invalid_provider_response() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"data": []})
+
+    embedder = OpenAICompatibleEmbedder(
+        api_base="https://model.example/v1",
+        api_key=None,
+        model_name="hosted-embedding",
+        dimension=2,
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+    with pytest.raises(EmbeddingUnavailableError, match="wrong number"):
+        embedder.embed_query("DIU admission")
+
+
+def test_create_embedder_selects_hosted_backend() -> None:
+    settings = RagSettings(
+        _env_file=None,
+        embedding_backend="openai",
+        embedding_api_base="https://model.example/v1",
+        embedding_api_key="secret",
+        embedding_api_model="hosted-embedding",
+        embedding_dimension=768,
+    )
+
+    embedder = create_embedder(settings)
+
+    assert isinstance(embedder, OpenAICompatibleEmbedder)
+    assert embedder.model_name == "hosted-embedding"
+    assert embedder.dimension == 768
+    assert embedder.model_revision is None

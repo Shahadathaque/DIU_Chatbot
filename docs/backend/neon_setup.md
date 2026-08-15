@@ -61,6 +61,17 @@ Use `--rebuild` only after confirming that the cleaned snapshot is complete.
 Changing `EMBEDDING_MODEL_NAME`, its revision, or its dimension requires a full
 rebuild because pgvector columns have a fixed dimension.
 
+Synchronize the API runtime catalog separately. This validates the same manifest
+and stores the program/source rows plus provenance in Neon:
+
+```bash
+.venv311/bin/python scripts/sync_runtime_catalog.py --dry-run
+.venv311/bin/python scripts/sync_runtime_catalog.py
+```
+
+The operation is idempotent and transactional. Production requests then use
+`RUNTIME_CATALOG_BACKEND=database`; they do not need `data/cleaned/v2`.
+
 Verify the populated index:
 
 ```bash
@@ -75,14 +86,25 @@ or another Python host:
 
 ```dotenv
 APP_ENV=production
+RUNTIME_CATALOG_BACKEND=database
 RAG_VECTOR_BACKEND=pgvector
+RAG_TABLE_NAME=diu_knowledge_chunks_hosted
 DATABASE_URL=postgresql://USER:PASSWORD@HOST/DB?sslmode=require
 GENERATOR_BACKEND=openai
 GENERATOR_API_BASE=https://generativelanguage.googleapis.com/v1beta/openai/
 GENERATOR_API_KEY=provider-secret
-GENERATOR_API_MODEL=gemini-2.5-flash
+GENERATOR_API_MODEL=provider-flash-model
+EMBEDDING_BACKEND=openai
+EMBEDDING_API_BASE=https://generativelanguage.googleapis.com/v1beta/openai/
+EMBEDDING_API_KEY=provider-secret
+EMBEDDING_API_MODEL=provider-embedding-model
+EMBEDDING_DIMENSION=768
 CORS_ORIGINS=https://your-app.vercel.app
 ```
+
+Before deploying chat, rebuild the complete knowledge base into the new hosted
+embedding table using these hosted embedding variables. Never point a hosted
+query embedder at the existing local E5 table.
 
 Start the service with the platform-provided port:
 

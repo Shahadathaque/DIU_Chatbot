@@ -72,6 +72,31 @@ def test_sources_empty_records_returns_empty_list() -> None:
     _reset_overrides()
 
 
+def test_sources_database_backend_does_not_load_local_files(monkeypatch) -> None:
+    class FakeRepository:
+        def list_sources(self):
+            return [
+                {
+                    "id": "DIU-ADM-001",
+                    "title": "Official DIU admission",
+                    "url": "https://daffodilvarsity.edu.bd/admission",
+                    "retrieved_at": "2026-08-15T00:00:00Z",
+                    "category": "admission_overview",
+                }
+            ]
+
+    service = SourcesService(repository=FakeRepository())
+    monkeypatch.setattr(
+        service,
+        "_load_records",
+        lambda: (_ for _ in ()).throw(AssertionError("local files must not load")),
+    )
+
+    response = service.list_sources()
+
+    assert [source.id for source in response.sources] == ["DIU-ADM-001"]
+
+
 def test_missing_cleaned_dataset_returns_recovery_error(tmp_path) -> None:
     service = SourcesService(cleaned_root=str(tmp_path / "missing-cleaned"))
     client = _client(service)

@@ -17,7 +17,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from rag.chunker import chunk_records, load_cleaned_records  # noqa: E402
 from rag.config import RagSettings  # noqa: E402
-from rag.embeddings import SentenceTransformerEmbedder  # noqa: E402
+from rag.embeddings import create_embedder  # noqa: E402
 from rag.vector_store import create_vector_store  # noqa: E402
 
 
@@ -108,13 +108,7 @@ def build_knowledge_base(
         # load and corpus embedding. Rebuild setup stays inside the store's atomic
         # replacement transaction after embeddings have succeeded.
         store.setup()
-    embedder = SentenceTransformerEmbedder(
-        settings.embedding_model_name,
-        expected_dimension=settings.embedding_dimension,
-        model_revision=settings.embedding_model_revision,
-        batch_size=settings.embedding_batch_size,
-        device=settings.embedding_device,
-    )
+    embedder = create_embedder(settings)
     embeddings = embedder.embed_documents([chunk.content for chunk in chunks])
     index_report = store.upsert_chunks(
         chunks,

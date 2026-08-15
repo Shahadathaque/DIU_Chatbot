@@ -18,6 +18,11 @@ values. Never paste credentials into this file or commit a real `.env` file.
 ## Backend deployment
 
 - [ ] Create/populate PostgreSQL + pgvector using [docs/backend/neon_setup.md](docs/backend/neon_setup.md)
+- [ ] Rotate any database/provider secret previously shared in chat, logs, or screenshots
+- [ ] `scripts/sync_runtime_catalog.py --dry-run` reports the expected programs/sources
+- [ ] Synchronize the runtime catalog to Neon and set `RUNTIME_CATALOG_BACKEND=database`
+- [ ] Rebuild a new pgvector table with the configured hosted embedding model
+- [ ] Confirm `RAG_TABLE_NAME`, `EMBEDDING_API_MODEL`, and `EMBEDDING_DIMENSION` match that table
 - [ ] Create a Railway, Fly.io, Render, or equivalent account
 - [ ] Connect the GitHub repository
 - [ ] Set production variables from [ENV_VARIABLES.md](ENV_VARIABLES.md)
@@ -28,7 +33,7 @@ values. Never paste credentials into this file or commit a real `.env` file.
 ### Verify the backend
 
 - [ ] `curl https://your-backend.example/api/health` returns `200`
-- [ ] `/api/live` returns quickly and `/api/ready` reports database, model endpoint, and RAG states
+- [ ] `/api/live` returns quickly and `/api/ready` reports database, model endpoint, RAG, and runtime catalog states
 - [ ] Provider logs show production startup validation succeeded
 - [ ] `CORS_ORIGINS` includes every Vercel/custom frontend origin
 - [ ] `POST /api/chat` returns a contract-shaped response

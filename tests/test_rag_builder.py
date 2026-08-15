@@ -40,7 +40,7 @@ def test_dry_run_honors_limit_without_loading_model_or_store(
     def forbidden(*args: object, **kwargs: object) -> object:
         raise AssertionError("dry-run must not initialize embeddings or storage")
 
-    monkeypatch.setattr(builder, "SentenceTransformerEmbedder", forbidden)
+    monkeypatch.setattr(builder, "create_embedder", forbidden)
     monkeypatch.setattr(builder, "create_vector_store", forbidden)
     report = builder.build_knowledge_base(
         cleaned_root=root,
@@ -83,7 +83,7 @@ def test_missing_production_database_fails_before_model_loading(
     def forbidden(*args: object, **kwargs: object) -> object:
         raise AssertionError("model must not load before database configuration")
 
-    monkeypatch.setattr(builder, "SentenceTransformerEmbedder", forbidden)
+    monkeypatch.setattr(builder, "create_embedder", forbidden)
     with pytest.raises(RuntimeError, match="DATABASE_URL is required"):
         builder.build_knowledge_base(cleaned_root=root, settings=settings)
 
@@ -96,7 +96,7 @@ def test_mutating_build_rejects_empty_manifest_before_storage_or_model(
     def forbidden(*args: object, **kwargs: object) -> object:
         raise AssertionError("empty builds must fail before model or storage setup")
 
-    monkeypatch.setattr(builder, "SentenceTransformerEmbedder", forbidden)
+    monkeypatch.setattr(builder, "create_embedder", forbidden)
     monkeypatch.setattr(builder, "create_vector_store", forbidden)
 
     with pytest.raises(ValueError, match="zero records"):
@@ -117,7 +117,7 @@ def test_mutating_build_rejects_zero_chunks_before_storage_or_model(
         raise AssertionError("empty builds must fail before model or storage setup")
 
     monkeypatch.setattr(builder, "chunk_records", lambda *args, **kwargs: [])
-    monkeypatch.setattr(builder, "SentenceTransformerEmbedder", forbidden)
+    monkeypatch.setattr(builder, "create_embedder", forbidden)
     monkeypatch.setattr(builder, "create_vector_store", forbidden)
 
     with pytest.raises(ValueError, match="zero chunks"):

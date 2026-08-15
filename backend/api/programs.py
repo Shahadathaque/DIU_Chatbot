@@ -14,7 +14,7 @@ router = APIRouter(tags=["programs"])
 
 @lru_cache
 def get_programs_service() -> ProgramsService:
-    """Build the production programs service from the cleaned dataset."""
+    """Build the environment-configured runtime program service."""
     return ProgramsService()
 
 

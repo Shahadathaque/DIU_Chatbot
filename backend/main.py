@@ -114,6 +114,14 @@ async def startup_validation() -> None:
     logger.info("[startup] Database: %s", database_status)
     logger.info("[startup] Model endpoint: %s", model_status)
     logger.info("[startup] RAG backend: %s", rag_backend)
+    logger.info(
+        "[startup] Runtime catalog: %s",
+        runtime_settings.runtime_catalog_backend,
+    )
+    logger.info(
+        "[startup] Embeddings: %s",
+        runtime_settings.embedding_backend,
+    )
 
     if environment != "production":
         logger.info("[startup] Development mode: optional production settings are not required")

@@ -21,7 +21,12 @@ def test_backend_starts_and_health_is_ok() -> None:
     assert response.status_code == 200
     body = response.json()
     assert body["status"] == "ok"
-    assert set(body["checks"]) == {"database", "model_endpoint", "rag_backend"}
+    assert set(body["checks"]) == {
+        "database",
+        "model_endpoint",
+        "rag_backend",
+        "runtime_catalog",
+    }
 
 
 def test_browser_origin_receives_cors_headers() -> None:

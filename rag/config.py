@@ -30,6 +30,12 @@ class RagSettings(BaseSettings):
     embedding_dimension: int = Field(DEFAULT_EMBEDDING_DIMENSION, ge=1)
     embedding_batch_size: int = Field(16, ge=1)
     embedding_device: Optional[str] = None
+    embedding_backend: Literal["local", "openai"] = "local"
+    embedding_api_base: Optional[str] = None
+    embedding_api_key: Optional[str] = None
+    embedding_api_model: Optional[str] = None
+    embedding_api_timeout: float = Field(30.0, gt=0, le=120.0)
+    embedding_api_send_dimensions: bool = True
 
     rag_vector_backend: Literal["pgvector", "local"] = "pgvector"
     rag_table_name: str = "diu_knowledge_chunks"
@@ -54,7 +60,15 @@ class RagSettings(BaseSettings):
         extra="ignore",
     )
 
-    @field_validator("database_url", "embedding_model_revision", "embedding_device", mode="before")
+    @field_validator(
+        "database_url",
+        "embedding_model_revision",
+        "embedding_device",
+        "embedding_api_base",
+        "embedding_api_key",
+        "embedding_api_model",
+        mode="before",
+    )
     @classmethod
     def blank_optional_values_are_none(cls, value: Any) -> Any:
         return None if isinstance(value, str) and not value.strip() else value
@@ -98,7 +112,21 @@ class RagSettings(BaseSettings):
             raise ValueError("RAG_CHUNK_OVERLAP must be smaller than RAG_CHUNK_SIZE")
         if self.rag_min_chunk_size > self.rag_chunk_size:
             raise ValueError("RAG_MIN_CHUNK_SIZE cannot exceed RAG_CHUNK_SIZE")
-        if (
+        if self.embedding_backend == "openai":
+            if not self.embedding_api_base:
+                raise ValueError(
+                    "EMBEDDING_API_BASE is required when EMBEDDING_BACKEND=openai"
+                )
+            if not self.embedding_api_model:
+                raise ValueError(
+                    "EMBEDDING_API_MODEL is required when EMBEDDING_BACKEND=openai"
+                )
+            self.embedding_model_name = self.embedding_api_model
+            # Hosted providers usually expose a versioned model name instead of
+            # an immutable Hugging Face commit.
+            if self.embedding_model_revision == DEFAULT_EMBEDDING_REVISION:
+                self.embedding_model_revision = None
+        elif (
             self.embedding_model_name == DEFAULT_EMBEDDING_MODEL
             and not self.embedding_model_revision
         ):

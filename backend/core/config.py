@@ -2,7 +2,7 @@
 
 import logging
 from functools import lru_cache
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -16,6 +16,8 @@ class Settings(BaseSettings):
     app_env: str = "development"
     log_level: str = "INFO"
     database_url: Optional[str] = None
+    runtime_catalog_backend: Literal["local", "database"] = "local"
+    rag_vector_backend: Literal["local", "pgvector"] = "pgvector"
     openai_api_base: Optional[str] = None
     openai_api_key: Optional[str] = None
     # GENERATOR_* is the canonical runtime configuration used by rag.generator.
@@ -27,6 +29,10 @@ class Settings(BaseSettings):
     generator_api_model: Optional[str] = None
     model_name: Optional[str] = None
     embedding_model_name: Optional[str] = None
+    embedding_backend: Literal["local", "openai"] = "local"
+    embedding_api_base: Optional[str] = None
+    embedding_api_key: Optional[str] = None
+    embedding_api_model: Optional[str] = None
     hf_token: Optional[str] = None
     cors_origins: str = "http://localhost:3000"
     rate_limit_per_minute: int = Field(30, ge=0, le=10_000)
@@ -48,6 +54,9 @@ class Settings(BaseSettings):
         "generator_api_model",
         "model_name",
         "embedding_model_name",
+        "embedding_api_base",
+        "embedding_api_key",
+        "embedding_api_model",
         "hf_token",
         "sentry_dsn",
         mode="before",
@@ -67,6 +76,10 @@ class Settings(BaseSettings):
             message = "DATABASE_URL required in production"
             LOGGER.error(message)
             raise ValueError(message)
+        if not self.cors_origins.strip():
+            message = "CORS_ORIGINS required in production"
+            LOGGER.error(message)
+            raise ValueError(message)
         model_endpoint = self.generator_api_base or self.openai_api_base
         if not model_endpoint:
             message = (
@@ -80,8 +93,28 @@ class Settings(BaseSettings):
             message = "GENERATOR_BACKEND=openai required in production"
             LOGGER.error(message)
             raise ValueError(message)
-        if not self.cors_origins.strip():
-            message = "CORS_ORIGINS required in production"
+        if self.runtime_catalog_backend != "database":
+            message = "RUNTIME_CATALOG_BACKEND=database required in production"
+            LOGGER.error(message)
+            raise ValueError(message)
+        if self.rag_vector_backend != "pgvector":
+            message = "RAG_VECTOR_BACKEND=pgvector required in production"
+            LOGGER.error(message)
+            raise ValueError(message)
+        if self.embedding_backend != "openai":
+            message = "EMBEDDING_BACKEND=openai required in production"
+            LOGGER.error(message)
+            raise ValueError(message)
+        if not self.embedding_api_base:
+            message = "EMBEDDING_API_BASE required in production"
+            LOGGER.error(message)
+            raise ValueError(message)
+        if not self.embedding_api_key:
+            message = "EMBEDDING_API_KEY required in production"
+            LOGGER.error(message)
+            raise ValueError(message)
+        if not self.embedding_api_model:
+            message = "EMBEDDING_API_MODEL required in production"
             LOGGER.error(message)
             raise ValueError(message)
 
