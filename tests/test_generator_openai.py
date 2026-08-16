@@ -50,7 +50,7 @@ def test_openai_generate_success() -> None:
     assert captured["content_type"] == "application/json"
     assert captured["body"]["model"] == "Qwen/Qwen2.5-1.5B-Instruct"
     assert captured["body"]["messages"] == messages
-    assert captured["body"]["max_tokens"] == 256
+    assert captured["body"]["max_tokens"] == 384
     assert captured["body"]["temperature"] == 0.0
     assert captured["body"]["top_p"] == 0.9
 

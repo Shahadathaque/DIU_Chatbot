@@ -61,7 +61,7 @@ def test_local_generator_uses_injected_model_and_template() -> None:
     assert output == "generated answer"
     assert tokenizer.applied_messages == messages
     assert generator.device == "cpu"
-    assert model.last_kwargs["max_new_tokens"] == 256
+    assert model.last_kwargs["max_new_tokens"] == 384
     assert model.last_kwargs["temperature"] == 0.0
     assert model.last_kwargs["top_p"] == 0.9
     assert model.last_kwargs["do_sample"] is False

@@ -18,11 +18,11 @@ early.
 | RAG chunking | Done — `rag/chunker.py`, integrity-checked manifest, tables + PDF pages |
 | Embeddings | Done — `intfloat/multilingual-e5-base` (768-d) via `rag/embeddings.py` |
 | Vector store | Done — pgvector (production) + JSON/in-memory (dev/test) |
-| Retrieval | **TASK-DEMO hardened** — domain/authority/dedup plus follow-up program/topic context, program/degree pinning, local-vs-international fee separation, and structured fact compatibility |
+| Retrieval | **Active retrieval-quality task implemented locally** — multilingual normalization, deterministic intent detection, evidence-oriented reformulation, strongest-lane scoring, strict fact compatibility, and refusal preservation; deployment pending |
 | Backend API | **TASK-01 done** — `/api/chat`, `/api/programs`, `/api/sources` live against the existing retriever + local KB; `/api/eligibility` was contract-only until TASK-03 |
 | LLM generation | **TASK-02 + TASK-DEMO done** — grounded Qwen generation; deterministic rendering protects tuition-table labels and SSC/HSC waiver rows from small-model unit/column errors |
 | Eligibility engine | **TASK-03 done** — `eligibility/` deterministic rule engine (R-001 program registry, R-002 diploma pathway); `POST /api/eligibility` live; returns `insufficient_information` where official evidence cannot establish eligibility |
-| Frontend | **TASK-04 + TASK-DEMO done; TASK-19 deployment in progress** — real backend wiring plus six-turn chat history in normal and retry payloads; CORS, program-driven eligibility dropdown, backend errors, mocks retained, and failed streams no longer leave empty answer cards |
+| Frontend | **TASK-04 + TASK-DEMO + TASK-19 done; retrieval examples updated locally** — real backend wiring plus six-turn chat history, evidence-backed suggestions, CORS, program-driven eligibility dropdown, backend errors, mocks retained, and failed streams no longer leave empty answer cards |
 | Fine-tuning | **Not started** (research phase) |
 | Evaluation | **M5 done (TASK-05A + M5-B)** — held-out v1 dataset (150 q), deterministic metrics, retrieval Recall@K/Precision@K/MRR, eligibility real+synthetic tiers, base vs base+RAG generation at temperature=0.0; report at `results/evaluation/v1/report.md` |
 | Reproducible setup | **TASK-06 done** — one bootstrap command, checksum/provenance artifact checker, offline unit-test default, explicit integration marker, and validation-before-model safeguards |
@@ -57,15 +57,19 @@ early.
 
 ### Current
 
-TASK-19 is complete: the backend is live on Render's free plan, the frontend is
-live on Vercel, exact production CORS is configured, and public readiness,
-catalog, eligibility, grounded chat, and browser communication checks passed.
-The chat UI no longer leaves an empty assistant card after a failed stream.
+The active retrieval-quality task is implemented and locally verified. Common
+English, Bangla, and Banglish questions now retrieve exact official evidence
+without lowering the production thresholds; eligibility questions remain owned
+by the deterministic checker and unsupported questions still refuse. Backend,
+frontend, and real Neon retrieval checks pass. Provider synchronization and
+redeployment remain pending because the Codex approval service reported that its
+external-action usage limit was exhausted during the requested Neon rebuild.
 
 ### Next
 
-Stop after TASK-19. Select a new task before making further implementation
-changes.
+When external actions are available, verify/synchronize the unchanged 264-chunk
+Neon index, push the implementation, update Render's 384-token output setting,
+redeploy Render and Vercel, and run the TASK.md public regression matrix.
 
 ### Key gaps blocking a complete product
 1. ~~No chat endpoint — the retriever exists but is never called from the API.~~ **Resolved in TASK-01** (`/api/chat` now calls the retriever).
@@ -587,3 +591,18 @@ scope), record it here with a short reason._
   verification passed with 17 Vitest tests, TypeScript, ESLint, and production
   build. No admission facts, eligibility rules, RAG ranking, datasets, model
   weights, or research results changed.
+- **2026-08-16** — Active retrieval-quality task implemented locally. Added
+  deterministic English/Bangla/Banglish query analysis with evidence-oriented
+  reformulation for application steps, documents, diploma applications, fees,
+  scholarships/waivers, programs, and eligibility guidance. Canonical intent
+  queries raised measured semantic scores for three public failures from
+  0.6833/0.7470/0.7028 to 0.8381/0.8347/0.7978 while keeping the 0.75 semantic
+  and 0.72 relevance thresholds unchanged. Search-lane merging now preserves
+  the strongest verified match; GPA eligibility remains strictly source-gated,
+  chat never lets the generator decide eligibility, unsupported/personal claims
+  still refuse, and all UI suggestions map to collected official sources.
+  Verification: 393 backend tests passed (41 integrations deselected), 18
+  frontend tests passed, TypeScript/ESLint/build passed, and live Neon retrieval
+  returned the expected official evidence for every TASK.md phrasing variant.
+  External Neon rebuild and Render/Vercel redeployment are pending because the
+  Codex approval service exhausted its external-action usage limit.

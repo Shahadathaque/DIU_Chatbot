@@ -122,6 +122,39 @@ def test_generated_chat_returns_grounded_answer_and_sources() -> None:
     _reset_overrides()
 
 
+def test_eligibility_question_uses_deterministic_checker_guidance() -> None:
+    query = "Am I eligible for BSc in CSE?"
+    resolved_query = (
+        "Am I eligible for BSc in CSE. "
+        "Program: Computer Science and Engineering."
+    )
+    retriever = _FakeRetriever(
+        {
+            resolved_query: [
+                _program_result(
+                    "cse-program",
+                    "B. Sc. in Computer Science and Engineering",
+                    "Science and Information Technology",
+                )
+            ]
+        }
+    )
+    generator = _FakeGenerator("This must not decide eligibility.")
+    client = _client(retriever, generator)
+
+    response = client.post(
+        "/api/chat", json={"message": query, "language": "en"}
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert "cannot determine your eligibility" in body["answer"]
+    assert "Eligibility Checker" in body["answer"]
+    assert body["sources"][0]["url"].startswith("https://")
+    assert generator.calls == []
+    _reset_overrides()
+
+
 def test_program_list_uses_complete_structured_rows_without_generator_omission() -> None:
     query = "Which business programs does DIU offer?"
     names = [
@@ -179,6 +212,7 @@ def test_generator_receives_grounded_evidence() -> None:
     assert "ONLY the DIU evidence" in system_prompt
     assert "insufficient" in system_prompt
     assert "Do not invent citations or URLs" in system_prompt
+    assert "at most six bullets" in system_prompt
     assert "What documents are required?" in user_prompt
     assert "Verified DIU document requirements evidence." in user_prompt
     assert "daffodilvarsity.edu.bd" in user_prompt

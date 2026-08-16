@@ -20,7 +20,7 @@ def test_generator_settings_defaults() -> None:
     assert settings.generator_model_name == DEFAULT_GENERATOR_MODEL
     assert settings.generator_model_revision is None
     assert settings.generator_device is None
-    assert settings.generator_max_new_tokens == 256
+    assert settings.generator_max_new_tokens == 384
     assert settings.generator_temperature == 0.0
     assert settings.generator_top_p == 0.9
     assert settings.generator_api_base is None

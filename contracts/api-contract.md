@@ -128,6 +128,15 @@ readiness checks.
 This endpoint is implemented by the FastAPI backend. Retrieval and generation
 are constructed only after the request body passes validation.
 
+The retrieval layer normalizes and classifies common English, Bangla, and
+Banglish admission wording before semantic search. Query reformulation only
+selects an evidence intent; it never supplies admission facts. Successful
+answers remain grounded in verified DIU chunks, and `sources` is populated from
+their stored official URLs. Unsupported questions or questions lacking enough
+verified evidence return the insufficient-information answer with an empty
+`sources` array. Chat eligibility questions never make a decision: they direct
+the user to the deterministic eligibility endpoint.
+
 Request:
 
 ```json

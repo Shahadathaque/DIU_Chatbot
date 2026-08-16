@@ -8,7 +8,8 @@ from typing import Any, Dict, List, Optional, Sequence
 from backend.core.errors import ApiError
 from backend.models.chat import ChatResponse, ChatSource, Confidence, Language
 from rag.generator import Generator, GeneratorUnavailableError
-from rag.retriever import Retriever, _matched_program_phrase, _PROGRAM_LIST_PATTERN
+from rag.retriever import Retriever, _matched_program_phrase
+from rag.query_processing import QueryIntent, analyze_query
 
 
 _INTRO_BY_LANGUAGE: Dict[Language, str] = {
@@ -64,7 +65,9 @@ _SYSTEM_PROMPT = (
     "one, do not choose a value for them; explain that it depends on the program "
     "or faculty and ask for that detail. Prefer the language the user requested. "
     "Do not add a process step that is absent from the supplied evidence. Answer "
-    "briefly and directly."
+    "briefly and directly. Prefer a short paragraph or at most six bullets. "
+    "Do not add phone numbers, email addresses, or unrelated details unless the "
+    "user asks for contact information."
 )
 
 _FOLLOWUP_TOPICS = (
@@ -113,6 +116,25 @@ _WAIVER_PROGRAM_CLARIFICATION: Dict[Language, str] = {
         "Shudhu GPA diye waiver rate nirdharon kora jacche na, karon DIU policy-te "
         "program o faculty onujayi alada table ache. Apni kon program-e apply "
         "korben seta bolun."
+    ),
+}
+_ELIGIBILITY_GUIDANCE: Dict[Language, str] = {
+    "en": (
+        "I can confirm the program from DIU's official catalog, but I cannot "
+        "determine your eligibility from this question alone. Use the Eligibility "
+        "Checker and provide your academic background; its deterministic rule "
+        "engine will report any missing official criteria instead of guessing."
+    ),
+    "bn": (
+        "DIU-এর অফিসিয়াল ক্যাটালগ থেকে প্রোগ্রামটি নিশ্চিত করা যাচ্ছে, কিন্তু "
+        "শুধু এই প্রশ্ন থেকে আপনার যোগ্যতা নির্ধারণ করা যায় না। Eligibility Checker-এ "
+        "আপনার শিক্ষাগত তথ্য দিন; অফিসিয়াল মানদণ্ড অনুপস্থিত থাকলে এটি অনুমান না করে "
+        "সেটি জানাবে।"
+    ),
+    "banglish": (
+        "DIU-r official catalog theke program-ti confirm kora jacche, kintu shudhu "
+        "ei proshno diye apnar eligibility decide kora jabe na. Eligibility Checker-e "
+        "academic details din; official criteria missing hole eta guess na kore janabe."
     ),
 }
 
@@ -251,9 +273,12 @@ class ChatService:
         never called.
         """
         resolved = resolve_followup(message, history)
+        resolved_analysis = analyze_query(
+            resolved, program_phrase=_matched_program_phrase(resolved)
+        )
         retrieval_top_k = (
             max(self.top_k, 60)
-            if _PROGRAM_LIST_PATTERN.search(resolved)
+            if resolved_analysis.intent is QueryIntent.PROGRAM_CATALOG
             else self.top_k
         )
         results = self._retriever.retrieve(resolved, top_k=retrieval_top_k)
@@ -338,7 +363,15 @@ def _structured_response(
 ) -> Optional[ChatResponse]:
     """Render facts whose table labels must not be reinterpreted by the LLM."""
 
-    if _PROGRAM_LIST_PATTERN.search(message):
+    analysis = analyze_query(message, program_phrase=_matched_program_phrase(message))
+    if analysis.intent is QueryIntent.ELIGIBILITY:
+        return ChatResponse(
+            answer=_ELIGIBILITY_GUIDANCE[language],
+            sources=_sources_from(results),
+            confidence=_confidence_from(results),
+            language=language,
+        )
+    if analysis.intent is QueryIntent.PROGRAM_CATALOG:
         catalog_response = _program_catalog_response(language, results)
         if catalog_response is not None:
             return catalog_response

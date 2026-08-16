@@ -11,6 +11,7 @@ from typing import Any, Iterable, List, Optional, Sequence
 from rag.config import RagSettings, get_rag_settings
 from rag.embeddings import Embedder, create_embedder
 from rag.models import KnowledgeChunk, SearchFilters, SearchResult, VectorMatch
+from rag.query_processing import QueryIntent, analyze_query
 from rag.vector_store import VectorStore, create_vector_store
 
 
@@ -312,10 +313,15 @@ class Retriever:
         if is_explicitly_out_of_domain(query):
             return []
         intent_query = _base_query(query)
-        if not is_likely_admission_query(intent_query):
+        program_phrase = _matched_program_phrase(intent_query)
+        analysis = analyze_query(intent_query, program_phrase=program_phrase)
+        if not analysis.is_admission_query:
             return []
-        program_list_query = bool(_PROGRAM_LIST_PATTERN.search(intent_query))
-        normalized = normalize_query(query)
+        program_list_query = bool(
+            analysis.intent is QueryIntent.PROGRAM_CATALOG
+            or _PROGRAM_LIST_PATTERN.search(intent_query)
+        )
+        normalized = analysis.retrieval_query
         query_embedding = self.embedder.embed_query(normalized)
         filters = SearchFilters(
             category=category,
@@ -350,7 +356,10 @@ class Retriever:
             )
         else:
             candidates = authoritative_candidates
-        program_phrase = _matched_program_phrase(normalized)
+        # Keep the program resolved from the user's wording. Canonical intent
+        # text may omit it for document/application intents, but the dedicated
+        # program lane must still remain available for precise evidence.
+        program_phrase = program_phrase or _matched_program_phrase(normalized)
         if program_phrase is None and _PROGRAM_LIST_PATTERN.search(normalized):
             program_phrase = _PROGRAM_CATALOG_QUERY
         if program_phrase is not None:
@@ -445,10 +454,18 @@ class Retriever:
     def _merge_candidates(
         authoritative: Sequence[VectorMatch], expanded: Sequence[VectorMatch]
     ) -> List[VectorMatch]:
-        """Merge search lanes while preserving the authoritative copy of a row."""
+        """Merge search lanes while retaining each row's strongest match.
+
+        A canonical intent lane and a program-name lane can both return the
+        same verified chunk. Keeping the weaker lane's score would incorrectly
+        discard evidence that passed the calibrated semantic threshold.
+        """
 
         merged = {match.chunk.chunk_id: match for match in expanded}
-        merged.update({match.chunk.chunk_id: match for match in authoritative})
+        for match in authoritative:
+            previous = merged.get(match.chunk.chunk_id)
+            if previous is None or match.similarity_score > previous.similarity_score:
+                merged[match.chunk.chunk_id] = match
         return list(merged.values())
 
     @staticmethod
@@ -877,6 +894,38 @@ def _evidence_matches_query_context(query: str, chunk: KnowledgeChunk) -> bool:
     if intent == "admission_process":
         return category == "admission_process"
 
+    if intent == "diploma_application":
+        return category == "admission_application_process"
+
+    if intent == "eligibility":
+        if category != "undergraduate_programs":
+            return False
+        if acronym is None:
+            return True
+        program = str(chunk.program or "")
+        return bool(program) and _chunk_program_matches(
+            program, acronym
+        ) and _program_level_matches(query, program, acronym)
+
+    if intent == "program_info":
+        if category != "undergraduate_programs":
+            return False
+        if acronym is None:
+            return True
+        program = str(chunk.program or "")
+        return bool(program) and _chunk_program_matches(
+            program, acronym
+        ) and _program_level_matches(query, program, acronym)
+
+    if intent == "contact":
+        return category == "admission_contact_information"
+
+    if intent == "international":
+        return category == "international_admission"
+
+    if intent == "admission_overview":
+        return category in {"admission_overview", "current_admission_information"}
+
     if intent == "deadline":
         return category in {
             "admission_notices",
@@ -898,12 +947,33 @@ def _evidence_matches_query_context(query: str, chunk: KnowledgeChunk) -> bool:
 def _fact_intent(query: str) -> Optional[str]:
     """Return the fact type requiring strict evidence compatibility."""
 
+    # GPA thresholds are a special high-risk fact: only an explicit official
+    # program-admission record may answer them. A catalog row proves that a
+    # program exists, not that an applicant meets its GPA requirements.
+    if _ADMISSION_GPA_PATTERN.search(query):
+        return "admission_gpa"
+    analysis = analyze_query(query, program_phrase=_matched_program_phrase(query))
+    mapped = {
+        QueryIntent.WAIVER: "waiver",
+        QueryIntent.SCHOLARSHIP: "scholarship",
+        QueryIntent.TUITION: "tuition",
+        QueryIntent.DOCUMENTS: "documents",
+        QueryIntent.APPLICATION_PROCESS: "admission_process",
+        QueryIntent.DIPLOMA_APPLICATION: "diploma_application",
+        QueryIntent.ELIGIBILITY: "eligibility",
+        QueryIntent.PROGRAM_INFO: "program_info",
+        QueryIntent.DEADLINE: "deadline",
+        QueryIntent.CONTACT: "contact",
+        QueryIntent.INTERNATIONAL: "international",
+        QueryIntent.ADMISSION_OVERVIEW: "admission_overview",
+    }.get(analysis.intent)
+    if mapped is not None:
+        return mapped
+
     if _WAIVER_PATTERN.search(query):
         return "waiver"
     if _SCHOLARSHIP_PATTERN.search(query):
         return "scholarship"
-    if _ADMISSION_GPA_PATTERN.search(query):
-        return "admission_gpa"
     if _TUITION_PATTERN.search(query):
         return "tuition"
     if _DOCUMENT_PATTERN.search(query):

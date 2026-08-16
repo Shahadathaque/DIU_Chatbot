@@ -303,6 +303,7 @@ def test_result_contract_filters_threshold_and_out_of_domain_short_circuit() -> 
     assert len(embedder.queries) == calls_before
     assert retriever.retrieve("random unrelated question") == []
     assert retriever.retrieve("What insurance documents are required?") == []
+    assert len(embedder.queries) == calls_before
     assert retriever.retrieve("What programs are available?") == []
     assert retriever.retrieve(
         "DIU BBA admission documents",
@@ -310,7 +311,7 @@ def test_result_contract_filters_threshold_and_out_of_domain_short_circuit() -> 
     ) == []
     with pytest.raises(ValueError, match="finite number"):
         retriever.retrieve("DIU tuition", min_relevance_score=math.nan)
-    assert len(embedder.queries) == calls_before + 5
+    assert len(embedder.queries) == calls_before + 4
 
 
 def test_query_normalization_preserves_bangla_and_normalizes_spacing() -> None:

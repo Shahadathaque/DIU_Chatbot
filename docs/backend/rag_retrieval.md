@@ -106,6 +106,58 @@ The CLI prints rank, semantic and relevance scores, chunk text, title, category,
 program, official source URL, and currency/manual-review status. A minimum score
 and explicit recognition of other named universities suppress unsupported hits.
 
+## Multilingual query understanding
+
+`rag/query_processing.py` classifies user wording before embedding it. The
+classification is deterministic and contains no admission facts. It normalizes
+spacing and Unicode, recognizes common English, Bangla, and Banglish admission
+wording, preserves an explicitly named program, and produces an
+evidence-oriented retrieval query for these intents:
+
+- application process and diploma application pathway;
+- required documents;
+- tuition and fees;
+- scholarships and waivers;
+- program catalog and program information;
+- eligibility guidance, deadlines, contacts, and international admission.
+
+The retriever still applies the official-source, freshness, extraction-quality,
+program, and fact-compatibility gates after semantic search. Eligibility
+questions retrieve the official program catalog only to confirm the named
+program; chat directs the applicant to the deterministic Eligibility Checker
+and never converts a catalog match into an eligibility decision.
+
+### Threshold calibration
+
+The production thresholds remain `0.75` semantic similarity and `0.72`
+post-ranking relevance. They were not lowered for this change. Reproducible
+queries against the 264-chunk Neon index showed why intent reformulation was
+needed:
+
+| Query | Previous best semantic score | Canonical-intent score | Official evidence |
+| --- | ---: | ---: | --- |
+| `How do I apply?` | 0.6833 | 0.8381 | `DIU-ADM-002` admission flow chart |
+| `What are the admission requirements?` | 0.7470 | 0.8347 | `DIU-DOC-001` admission checklist |
+| `Can diploma students apply?` | 0.7028 | 0.7978 | `DIU-APP-001` online application form |
+
+These measurements explain the earlier refusals and demonstrate improvement
+without weakening the global evidence gate. Unsupported topics, another named
+university, personal application status, and guaranteed/secret policy claims
+still return no evidence.
+
+### Evidence-backed product examples
+
+The chat suggestions correspond directly to collected official records:
+
+- bachelor/online application documents → `DIU-DOC-001`;
+- diploma application pathway → `DIU-APP-001`;
+- scholarship categories → `DIU-SCH-001`;
+- admission steps → `DIU-ADM-002`;
+- program catalog → `DIU-PROG-001`.
+
+API citations are created only from the retrieved chunks' stored title and
+official source URL. The generator cannot add sources to the response.
+
 ## Local development fallback
 
 When PostgreSQL is unavailable, set:

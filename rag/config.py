@@ -153,7 +153,7 @@ class GeneratorSettings(BaseSettings):
     generator_device: Optional[str] = None
     # Keep hosted/local responses bounded so free deployments do not spend
     # unbounded tokens on a single request.
-    generator_max_new_tokens: int = Field(256, ge=1, le=256)
+    generator_max_new_tokens: int = Field(384, ge=1, le=512)
     generator_temperature: float = Field(0.0, ge=0.0, le=2.0)
     generator_top_p: float = Field(0.9, ge=0.0, le=1.0)
     generator_api_base: Optional[str] = Field(
