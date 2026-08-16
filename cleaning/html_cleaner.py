@@ -103,6 +103,11 @@ def clean_html(
         if program_table is not None:
             tables.append(program_table)
 
+    if source_id == "DIU-FEE-001":
+        tuition_table = _tuition_fee_table(dependency_responses)
+        if tuition_table is not None:
+            tables = [tuition_table]
+
     text = normalize_text(root.get_text("\n", strip=True))
     if dynamic_page and re.search(
         r"(?i)Important Notices\s+No notices available\.?", text
@@ -197,6 +202,7 @@ def _meaningful_body(text: str, title: str) -> str:
 
 
 _PROGRAMS_API_SUFFIX = "/api/v1/public/academic/programs"
+_TUITION_FEES_API_PATH = "/api/v1/public/tuition-fees"
 _PROGRAM_PAGE_ORIGIN = "https://daffodilvarsity.edu.bd"
 _PROGRAM_PATH_SEGMENT = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 _DURATION_UNIT = re.compile(r"\b(?:years?|months?|semesters?)\b", re.IGNORECASE)
@@ -220,6 +226,96 @@ def _catalog_duration(program: Mapping[str, Any]) -> str:
 
     duration = str(program.get("duration") or "").strip()
     return duration if _DURATION_UNIT.search(duration) else ""
+
+
+
+def _format_fee_value(value: object) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    compact = text.replace(",", "")
+    if compact.isdigit():
+        return f"{int(compact):,}"
+    return text
+
+
+def _tuition_fee_table(
+    dependency_responses: Optional[Mapping[str, str]],
+) -> Optional[CleanTable]:
+    """Build the complete local tuition-fee table from the official API."""
+
+    if not dependency_responses:
+        return None
+
+    body: Optional[str] = None
+    for url, value in dependency_responses.items():
+        if _TUITION_FEES_API_PATH in url:
+            body = value
+            break
+    if body is None:
+        return None
+
+    try:
+        payload = json.loads(body)
+    except (TypeError, ValueError):
+        return None
+
+    records = payload.get("tuitions") if isinstance(payload, dict) else None
+    if not isinstance(records, list):
+        return None
+
+    rows: List[List[str]] = []
+    seen_program_names: set[str] = set()
+
+    for record in records:
+        if not isinstance(record, dict):
+            continue
+
+        publication_status = record.get("publication_status")
+        if publication_status not in (None, "", 1, "1", True):
+            continue
+
+        name = str(record.get("program_name") or "").strip()
+        if not name:
+            continue
+
+        name_key = name.casefold()
+        if name_key in seen_program_names:
+            continue
+        seen_program_names.add(name_key)
+
+        rows.append(
+            [
+                name,
+                str(record.get("majors") or "").strip(),
+                str(record.get("credit") or "").strip(),
+                str(record.get("program_duration") or "").strip(),
+                _format_fee_value(record.get("admission_fees")),
+                _format_fee_value(record.get("semester_cost")),
+                _format_fee_value(record.get("tuition_fees")),
+                _format_fee_value(record.get("total_fees")),
+            ]
+        )
+
+    if not rows:
+        return None
+
+    return CleanTable(
+        headers=[
+            "Full Program Name",
+            "Majors",
+            "Credit Hours",
+            "Duration",
+            "Payable During Admission",
+            "Average Semester Fees",
+            "Total Tuition Fees",
+            "Total Program Fees",
+        ],
+        rows=rows,
+        extraction_method="official_tuition_fees_api",
+        source_locator="official-local-tuition-fees",
+        extraction_quality="reliable",
+    )
 
 
 def _program_catalog_table(
