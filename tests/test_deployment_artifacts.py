@@ -43,6 +43,11 @@ def test_render_blueprint_requires_database_and_hosted_runtime_settings() -> Non
     assert "RUNTIME_CATALOG_BACKEND" in blueprint
     assert "value: database" in blueprint
     assert "GENERATOR_BACKEND" in blueprint
+    assert "GENERATOR_API_MODEL" in blueprint
+    assert "gemini-3.6-flash" in blueprint
+    assert "GENERATOR_API_REASONING_EFFORT" in blueprint
+    assert "value: minimal" in blueprint
     assert "EMBEDDING_BACKEND" in blueprint
+    assert "gemini-embedding-2" in blueprint
     assert "diu_knowledge_chunks_hosted" in blueprint
     assert "sync: false" in blueprint

@@ -26,12 +26,13 @@ variable.
 | `RAG_TABLE_NAME` | `diu_knowledge_chunks_hosted` | Yes in production | Use a new table whenever the embedding space changes. |
 | `GENERATOR_BACKEND` | `openai` | Yes in production | Use `local` only for development; production should use a hosted endpoint. |
 | `GENERATOR_API_BASE` | `https://generativelanguage.googleapis.com/v1beta/openai/` | Yes in production | OpenAI-compatible hosted model base URL. |
-| `GENERATOR_API_KEY` | `provider-key-placeholder` | Provider-dependent | Backend-only secret; never expose it to Next.js. |
-| `GENERATOR_API_MODEL` | `provider-flash-model` | Yes with hosted provider | Current model name accepted by the provider. |
+| `GENERATOR_API_KEY` | `provider-key-placeholder` | Yes in production | Backend-only secret; never expose it to Next.js. |
+| `GENERATOR_API_MODEL` | `gemini-3.6-flash` | Yes in production | Current model name accepted by the provider. |
+| `GENERATOR_API_REASONING_EFFORT` | `minimal` | Recommended for Gemini 3 | Keeps short admission answers fast and prevents hidden reasoning from consuming the response budget. |
 | `EMBEDDING_BACKEND` | `openai` | Yes in production | Uses the lightweight hosted embedding adapter. |
 | `EMBEDDING_API_BASE` | `https://generativelanguage.googleapis.com/v1beta/openai/` | Yes in production | OpenAI-compatible embeddings base URL. |
 | `EMBEDDING_API_KEY` | `provider-key-placeholder` | Yes in production | Backend-only secret. It may equal the generator key. |
-| `EMBEDDING_API_MODEL` | `provider-embedding-model` | Yes in production | Must be the model used to build the configured vector table. |
+| `EMBEDDING_API_MODEL` | `gemini-embedding-2` | Yes in production | Must be the model used to build the configured vector table. |
 | `EMBEDDING_DIMENSION` | `768` | Yes in production | Must match the provider output and pgvector table metadata. |
 | `CORS_ORIGINS` | `https://your-app.vercel.app,https://your-domain.example` | Yes in production | Exact comma-separated browser origins; never `*`. |
 | `MODEL_NAME` | `qwen/qwen-2.5-1.5b-instruct` | No | Model identifier used by the configured model service. |

@@ -1,49 +1,79 @@
-# TASK-18 — Build Hosted Vector Index and Verify Deployment Readiness
+# TASK-19 — Deploy Backend and Connect Vercel Frontend
 
-Status: Complete
+Status: In Progress
 
 ## Objective
 
-Configure the user-provided hosted model credentials locally, validate hosted
-generation and embeddings, rebuild the complete v2 knowledge base into an
-isolated Neon pgvector table, and verify that the lightweight production backend
-can start and answer requests without local cleaned or model files.
+Deploy the lightweight FastAPI backend from the current `main` branch, configure
+its existing Neon and hosted Gemini runtime secrets in the hosting platform,
+deploy the Next.js frontend to Vercel, and verify the complete public application.
+
+## User decision
+
+The user explicitly requested continuing with the existing local credentials
+after being informed that credentials previously pasted into chat or screenshots
+should be considered exposed. Never copy their values into tracked files, logs,
+commands shown in documentation, screenshots, or completion reports.
 
 ## Acceptance criteria
 
-- Hosted model authentication is tested without logging the credential.
-- A representative hosted generation request succeeds.
-- A representative hosted embedding request returns exactly 768 finite values.
-- The complete validated v2 dataset is embedded with the hosted model and stored
-  in `diu_knowledge_chunks_hosted` without modifying the existing E5 table.
-- Neon metadata records the hosted embedding model and dimension.
-- Representative English, Bangla, and Banglish retrieval succeeds against the
-  hosted table.
-- Production configuration validation passes with database catalogs, pgvector,
-  hosted generation, hosted embeddings, and exact CORS configuration.
-- The production backend starts without local data/model dependencies and its
-  liveness/readiness and catalog endpoints succeed.
-- Existing offline unit tests remain green.
-- No secret or generated artifact is committed or printed.
+- The current repository and deployment configuration are inspected before any
+  external changes.
+- The backend is deployed from the repository using the committed lightweight
+  deployment configuration and production start command.
+- Backend secrets are entered only in the hosting provider's secret/environment
+  manager and are never committed or printed.
+- Production uses the Neon runtime catalogs, hosted pgvector table
+  `diu_knowledge_chunks_hosted`, Gemini generation, and 768-dimensional Gemini
+  embeddings.
+- `/api/live` and `/api/ready` return HTTP 200; readiness reports database,
+  model endpoint, RAG backend, and runtime catalog as `ok`.
+- Public programs, sources, eligibility, and a grounded chat request are verified.
+- The frontend is deployed from `frontend/` with mock mode disabled and its
+  public API URL pointing to the deployed backend.
+- Backend CORS contains the exact Vercel production origin and no wildcard.
+- The deployed frontend successfully calls the backend from a browser.
+- Relevant local tests/build checks remain green after any required configuration
+  changes.
+- Deployment URLs and non-secret verification results are documented.
+
+## Expected production settings
+
+- `APP_ENV=production`
+- `RUNTIME_CATALOG_BACKEND=database`
+- `RAG_VECTOR_BACKEND=pgvector`
+- `RAG_TABLE_NAME=diu_knowledge_chunks_hosted`
+- `GENERATOR_BACKEND=openai`
+- `GENERATOR_API_MODEL=gemini-3.6-flash`
+- `GENERATOR_API_REASONING_EFFORT=minimal`
+- `EMBEDDING_BACKEND=openai`
+- `EMBEDDING_API_MODEL=gemini-embedding-2`
+- `EMBEDDING_DIMENSION=768`
+- Exact production `CORS_ORIGINS`
+- `NEXT_PUBLIC_USE_MOCK_API=false`
+- Deployed `NEXT_PUBLIC_API_URL`
+
+Secret values must be read from the ignored local environment only when needed
+for provider configuration; never reproduce them in task documentation.
+
+## Manual-action boundary
+
+- The user may need to sign in, authorize GitHub/provider access, select a free
+  plan, confirm a deployment, or complete CAPTCHA/account verification.
+- Do not enable paid billing, purchase resources, register domains, or change
+  account security settings without explicit user approval.
+- If the backend provider cannot run the project within its free-plan limits,
+  report the measured limitation and present a free alternative before changing
+  providers.
 
 ## Constraints
 
 - Do not change admission facts, eligibility rules, scraped/cleaned data, RAG
-  ranking behavior, or frontend behavior.
-- Do not commit `.env`, credentials, model weights, or generated datasets.
-- Do not log database passwords, provider keys, or full connection strings.
-- Treat any credential pasted into chat as compromised and require replacement
-  before public deployment.
-- Do not modify or replace the existing local E5 research index.
-- Stop before an external hosting deployment if the hosting account is unavailable
-  or the production secrets have not been rotated.
-
-## Verification
-
-- Hosted generation returned a complete grounded answer with minimal reasoning.
-- Hosted embeddings returned 768 finite values using `gemini-embedding-2`.
-- Neon table `diu_knowledge_chunks_hosted` contains 264 chunks from 18 documents.
-- English, Bangla, and Banglish retrieval returned the official admission checklist.
-- Production startup, liveness, readiness, 52 programs, 18 sources, and chat passed
-  with nonexistent local artifact paths and offline Hugging Face settings.
-- Offline unit suite: 349 passed, 41 integration tests deselected.
+  ranking behavior, or research results.
+- Do not rebuild or overwrite the original local E5 index.
+- Do not commit `.env`, API keys, passwords, tokens, generated datasets, or model
+  weights.
+- Do not expose secret values in terminal output, URLs, screenshots, Git history,
+  or chat responses.
+- Preserve the working local development configuration.
+- Stop after TASK-19; do not begin another milestone automatically.

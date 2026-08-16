@@ -93,6 +93,14 @@ class Settings(BaseSettings):
             message = "GENERATOR_BACKEND=openai required in production"
             LOGGER.error(message)
             raise ValueError(message)
+        if not (self.generator_api_key or self.openai_api_key):
+            message = "GENERATOR_API_KEY required in production"
+            LOGGER.error(message)
+            raise ValueError(message)
+        if not (self.generator_api_model or self.model_name):
+            message = "GENERATOR_API_MODEL required in production"
+            LOGGER.error(message)
+            raise ValueError(message)
         if self.runtime_catalog_backend != "database":
             message = "RUNTIME_CATALOG_BACKEND=database required in production"
             LOGGER.error(message)

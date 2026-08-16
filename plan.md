@@ -56,17 +56,14 @@ early.
 
 ### Current
 
-The Neon runtime catalog is populated with 52 programs and 18 official sources.
-The lightweight hosted backend is prepared. The isolated hosted embedding table
-contains all 264 chunks, and local production verification passed without local
-data or model artifacts. Public deployment still requires rotating the exposed
-provider/database credentials and configuring the hosting account.
+TASK-19 is selected but not started: deploy the prepared backend, configure its
+existing secrets in the provider environment, deploy the frontend from
+`frontend/` to Vercel, set exact CORS/API origins, and verify the public product.
 
 ### Next
 
-Rotate the provider and database credentials, deploy the backend from
-`render.yaml`, set the Vercel API URL/CORS origin, and run the post-deployment
-checks before beginning further research work.
+Execute TASK-19. Provider authentication and deployment confirmations may require
+manual user interaction; no paid resource may be enabled without explicit approval.
 
 ### Key gaps blocking a complete product
 1. ~~No chat endpoint — the retriever exists but is never called from the API.~~ **Resolved in TASK-01** (`/api/chat` now calls the retriever).

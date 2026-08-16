@@ -30,7 +30,9 @@ services:
       - key: GENERATOR_API_KEY
         sync: false
       - key: GENERATOR_API_MODEL
-        sync: false
+        value: gemini-3.6-flash
+      - key: GENERATOR_API_REASONING_EFFORT
+        value: minimal
       - key: EMBEDDING_BACKEND
         value: openai
       - key: EMBEDDING_API_BASE
@@ -38,7 +40,7 @@ services:
       - key: EMBEDDING_API_KEY
         sync: false
       - key: EMBEDDING_API_MODEL
-        sync: false
+        value: gemini-embedding-2
       - key: EMBEDDING_DIMENSION
         value: "768"
       - key: CORS_ORIGINS
