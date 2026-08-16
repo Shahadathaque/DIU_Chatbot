@@ -19,6 +19,10 @@ import {
   streamChatMessage,
 } from "@/services/api";
 import { buildChatRequest } from "@/services/chat-request";
+import {
+  isRenderableAssistantMessage,
+  removeMessageById,
+} from "@/services/chat-state";
 import type {
   ApiSource,
   ChatRequest,
@@ -81,9 +85,12 @@ export function ChatExperience() {
     setFailedRequest(null);
     setIsLoading(true);
 
+    let pendingAssistantId: string | null = null;
+
     try {
       if (!isMockMode) {
         const assistantId = createId();
+        pendingAssistantId = assistantId;
         setMessages((current) => [
           ...current,
           { id: assistantId, role: "assistant", content: "" },
@@ -121,6 +128,12 @@ export function ChatExperience() {
         ]);
       }
     } catch (requestError) {
+      if (pendingAssistantId) {
+        const failedAssistantId = pendingAssistantId;
+        setMessages((current) =>
+          removeMessageById(current, failedAssistantId),
+        );
+      }
       setError(
         requestError instanceof ApiError
           ? requestError.message
@@ -238,7 +251,7 @@ export function ChatExperience() {
                           {message.content}
                         </div>
                       </div>
-                    ) : (
+                    ) : isRenderableAssistantMessage(message) ? (
                       <div className="flex items-start gap-3" key={message.id}>
                         <span className="grid size-8 shrink-0 place-items-center rounded-xl bg-brand text-white">
                           <SparkleIcon size={15} />
@@ -269,7 +282,7 @@ export function ChatExperience() {
                           )}
                         </div>
                       </div>
-                    ),
+                    ) : null,
                   )}
                   {isLoading ? <TypingIndicator /> : null}
                   {error ? (

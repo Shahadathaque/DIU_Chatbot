@@ -33,6 +33,8 @@ commands shown in documentation, screenshots, or completion reports.
   public API URL pointing to the deployed backend.
 - Backend CORS contains the exact Vercel production origin and no wildcard.
 - The deployed frontend successfully calls the backend from a browser.
+- Failed chat requests do not leave an empty assistant answer or a misleading
+  missing-citation notice in the conversation.
 - Relevant local tests/build checks remain green after any required configuration
   changes.
 - Deployment URLs and non-secret verification results are documented.

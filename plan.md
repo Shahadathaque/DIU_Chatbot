@@ -22,7 +22,7 @@ early.
 | Backend API | **TASK-01 done** — `/api/chat`, `/api/programs`, `/api/sources` live against the existing retriever + local KB; `/api/eligibility` was contract-only until TASK-03 |
 | LLM generation | **TASK-02 + TASK-DEMO done** — grounded Qwen generation; deterministic rendering protects tuition-table labels and SSC/HSC waiver rows from small-model unit/column errors |
 | Eligibility engine | **TASK-03 done** — `eligibility/` deterministic rule engine (R-001 program registry, R-002 diploma pathway); `POST /api/eligibility` live; returns `insufficient_information` where official evidence cannot establish eligibility |
-| Frontend | **TASK-04 + TASK-DEMO done** — real backend wiring plus six-turn chat history in normal and retry payloads; CORS, program-driven eligibility dropdown, backend errors, and mocks retained |
+| Frontend | **TASK-04 + TASK-DEMO done; TASK-19 deployment in progress** — real backend wiring plus six-turn chat history in normal and retry payloads; CORS, program-driven eligibility dropdown, backend errors, mocks retained, and failed streams no longer leave empty answer cards |
 | Fine-tuning | **Not started** (research phase) |
 | Evaluation | **M5 done (TASK-05A + M5-B)** — held-out v1 dataset (150 q), deterministic metrics, retrieval Recall@K/Precision@K/MRR, eligibility real+synthetic tiers, base vs base+RAG generation at temperature=0.0; report at `results/evaluation/v1/report.md` |
 | Reproducible setup | **TASK-06 done** — one bootstrap command, checksum/provenance artifact checker, offline unit-test default, explicit integration marker, and validation-before-model safeguards |
@@ -56,14 +56,18 @@ early.
 
 ### Current
 
-TASK-19 is selected but not started: deploy the prepared backend, configure its
-existing secrets in the provider environment, deploy the frontend from
-`frontend/` to Vercel, set exact CORS/API origins, and verify the public product.
+TASK-19 is in progress: the frontend is deployed to Vercel and the free Render
+container is healthy internally with exact production CORS. Render's first
+public hostname returns `x-render-routing: no-server`, so public API and full
+browser verification remain blocked pending approval for a replacement service.
+The chat UI regression that left an empty assistant card after a failed stream
+is fixed locally and covered by tests.
 
 ### Next
 
-Execute TASK-19. Provider authentication and deployment confirmations may require
-manual user interaction; no paid resource may be enabled without explicit approval.
+Finish TASK-19 by resolving the Render public route, redeploying the tested chat
+UI fix, and running public API/browser verification. No paid resource may be
+enabled without explicit approval.
 
 ### Key gaps blocking a complete product
 1. ~~No chat endpoint — the retriever exists but is never called from the API.~~ **Resolved in TASK-01** (`/api/chat` now calls the retriever).
