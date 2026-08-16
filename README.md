@@ -309,6 +309,20 @@ preflight and post-deployment checklist, [ENV_VARIABLES.md](ENV_VARIABLES.md)
 for provider settings, and [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for
 recovery steps.
 
+### Live deployment
+
+- Frontend: <https://diu-chatbot-blond.vercel.app>
+- Backend: <https://diu-admission-api.onrender.com>
+- Liveness: <https://diu-admission-api.onrender.com/api/live>
+- Readiness: <https://diu-admission-api.onrender.com/api/ready>
+
+Verified on 2026-08-16: both public applications returned HTTP 200; readiness
+reported the Neon database, hosted model endpoint, pgvector backend, and runtime
+catalog as `ok`; the database catalog returned 52 programs and 18 official
+sources; and a browser chat request returned a grounded answer with an official
+source card. The backend uses Render's free plan, so the first request after an
+idle period can take longer while the service wakes.
+
 ### Frontend deployment to Vercel
 
 Prerequisites: a Vercel account, this repository connected to GitHub, and the

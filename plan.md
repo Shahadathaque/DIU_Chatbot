@@ -53,21 +53,19 @@ early.
 - TASK-16: Complete v2 knowledge base and Neon pgvector population ✅
 - TASK-17: Neon runtime catalog and hosted backend preparation ✅ (provider deployment pending)
 - TASK-18: Hosted vector index and deployment-readiness verification ✅ (external deploy pending)
+- TASK-19: Render backend + Vercel frontend deployment and public verification ✅
 
 ### Current
 
-TASK-19 is in progress: the frontend is deployed to Vercel and the free Render
-container is healthy internally with exact production CORS. Render's first
-public hostname returns `x-render-routing: no-server`, so public API and full
-browser verification remain blocked pending approval for a replacement service.
-The chat UI regression that left an empty assistant card after a failed stream
-is fixed locally and covered by tests.
+TASK-19 is complete: the backend is live on Render's free plan, the frontend is
+live on Vercel, exact production CORS is configured, and public readiness,
+catalog, eligibility, grounded chat, and browser communication checks passed.
+The chat UI no longer leaves an empty assistant card after a failed stream.
 
 ### Next
 
-Finish TASK-19 by resolving the Render public route, redeploying the tested chat
-UI fix, and running public API/browser verification. No paid resource may be
-enabled without explicit approval.
+Stop after TASK-19. Select a new task before making further implementation
+changes.
 
 ### Key gaps blocking a complete product
 1. ~~No chat endpoint — the retriever exists but is never called from the API.~~ **Resolved in TASK-01** (`/api/chat` now calls the retriever).
@@ -578,3 +576,14 @@ scope), record it here with a short reason._
   manual because no hosted-model key or authorized backend-provider session was
   supplied. No admission facts, eligibility rules, research results, credentials,
   or generated datasets were committed.
+- **2026-08-16** — TASK-19 completed. Deployed the lightweight Docker backend to
+  Render's free plan and the Next.js frontend to Vercel. Configured production
+  Neon catalogs, hosted pgvector retrieval, Gemini generation/embeddings, exact
+  Vercel CORS, and real frontend API mode without exposing provider secrets.
+  Public verification passed for liveness/readiness, 52 programs, 18 sources,
+  deterministic eligibility, grounded chat with an official citation, CORS
+  preflight, and browser frontend-to-backend communication. Fixed failed chat
+  streams leaving an empty answer card and misleading citation notice; frontend
+  verification passed with 17 Vitest tests, TypeScript, ESLint, and production
+  build. No admission facts, eligibility rules, RAG ranking, datasets, model
+  weights, or research results changed.
