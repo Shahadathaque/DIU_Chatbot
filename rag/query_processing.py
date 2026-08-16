@@ -50,6 +50,24 @@ _PROGRAM_ALIASES = (
     (re.compile(r"(?<![a-z0-9])swe(?![a-z0-9])", re.I), "Software Engineering"),
     (re.compile(r"(?<![a-z0-9])eee(?![a-z0-9])", re.I), "Electrical and Electronic Engineering"),
     (re.compile(r"(?<![a-z0-9])llb(?![a-z0-9])|\blaw\b", re.I), "LL.B."),
+    (
+        re.compile(r"\benglish(?:\s+department)?\b", re.I),
+        "B.A. (Hons) in English",
+    ),
+    (
+        re.compile(
+            r"\btourism\s+(?:and|&)\s+hospitality\s+management\b",
+            re.I,
+        ),
+        "Tourism & Hospitality Management",
+    ),
+    (
+        re.compile(
+            r"\bjournalism\s*,?\s*media\s+(?:and|&)\s+communication\b",
+            re.I,
+        ),
+        "Journalism, Media and Communication",
+    ),
     (re.compile(r"\bpharmacy\b|ফার্মেসি", re.I), "Bachelor of Pharmacy"),
     (re.compile(r"\btextile\b|টেক্সটাইল", re.I), "Textile Engineering"),
 )

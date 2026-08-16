@@ -74,6 +74,7 @@ _PROGRAM_QUERY_MARKERS = {
     "eee": "Electrical and Electronic Engineering",
     "ice": "Information & Communication Engineering",
     "jmc": "Journalism, Media and Communication",
+    "english": "B.A. (Hons) in English",
     "thm": "Tourism & Hospitality Management",
     "ags": "Agricultural Science",
     "esdm": "Environmental Science and Disaster Management",
@@ -138,8 +139,30 @@ _PROGRAM_MISMATCH_PENALTY = -0.50
 _DEFAULT_POSTGRADUATE_PROGRAM_MARKERS = {"llm", "mba", "mds", "mph", "mss"}
 
 
+
 def _matched_program_phrase(query: str) -> Optional[str]:
     """Return the official program phrase named by a program-related query."""
+
+    lowered = unicodedata.normalize("NFKC", query).casefold()
+
+    if re.search(
+        r"\btourism\s+(?:and|&)\s+hospitality\s+management\b",
+        lowered,
+    ):
+        return "Tourism & Hospitality Management"
+
+    if re.search(
+        r"\bjournalism\s*,?\s*media\s+(?:and|&)\s+communication\b",
+        lowered,
+    ):
+        return "Journalism, Media and Communication"
+
+    if re.search(
+        r"\b(?:b\.?\s*a\.?\s*\(hons\)\s+in\s+)?"
+        r"english(?:\s+department)?\b",
+        lowered,
+    ):
+        return "B.A. (Hons) in English"
 
     matches = _named_program_markers(query)
     return _PROGRAM_QUERY_MARKERS[matches[0]] if len(matches) == 1 else None
@@ -159,18 +182,19 @@ def _named_program_markers(query: str) -> List[str]:
     marker_only: List[str] = []
     exact_phrases: set[str] = set()
     marker_phrases: set[str] = set()
+
     for acronym, official_phrase in _PROGRAM_QUERY_MARKERS.items():
         phrase = official_phrase.casefold()
+
         if phrase in lowered:
             if phrase not in exact_phrases:
                 exact.append(acronym)
                 exact_phrases.add(phrase)
+
         elif _contains_ascii_token(lowered, acronym) and phrase not in marker_phrases:
             marker_only.append(acronym)
             marker_phrases.add(phrase)
-    # “BBA in Finance & Banking” contains the BBA marker but explicitly names
-    # the more specific catalog phrase. In contrast, “CSE or SWE” has two marker
-    # matches and remains intentionally ambiguous.
+
     return exact if exact else marker_only
 
 
@@ -186,14 +210,22 @@ def _chunk_program_matches(program: str, acronym: str) -> bool:
 
     folded = program.casefold()
     phrase = _PROGRAM_QUERY_MARKERS[acronym].casefold()
+
     if phrase and phrase in folded:
         return True
+
     if acronym == "bba":
         return folded.strip(" .") == "bba"
+
     if _contains_ascii_token(folded, acronym):
         return True
+
     return bool(
-        re.search(r"\(\s*" + re.escape(acronym) + r"\s*\)", folded, re.IGNORECASE)
+        re.search(
+            r"\(\s*" + re.escape(acronym) + r"\s*\)",
+            folded,
+            re.IGNORECASE,
+        )
     )
 
 
