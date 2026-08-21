@@ -24,6 +24,22 @@ export function Footer() {
           <Link className="hover:text-brand" href="/blog">Admission Guides</Link>
           <a
             className="inline-flex items-center gap-1.5 hover:text-brand"
+            href="https://www.linkedin.com/in/shahadat-haque-fardin-77b084356/"
+            rel="noopener noreferrer"
+            target="_blank"
+          >
+            Shahadat on LinkedIn <ExternalLinkIcon size={14} />
+          </a>
+          <a
+            className="inline-flex items-center gap-1.5 hover:text-brand"
+            href="https://elearn.daffodilvarsity.edu.bd/course/view.php?id=36937"
+            rel="noopener noreferrer"
+            target="_blank"
+          >
+            AI Lab course <ExternalLinkIcon size={14} />
+          </a>
+          <a
+            className="inline-flex items-center gap-1.5 hover:text-brand"
             href="https://daffodilvarsity.edu.bd/"
             rel="noopener noreferrer"
             target="_blank"
