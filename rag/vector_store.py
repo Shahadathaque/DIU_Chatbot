@@ -672,6 +672,11 @@ class PgVectorStore:
                 min_size=self.pool_min_size,
                 max_size=self.pool_max_size,
                 timeout=self.pool_timeout,
+                # Hosted PostgreSQL providers can close idle SSL sessions while
+                # this service is sleeping. Validate every checked-out pooled
+                # connection so psycopg_pool discards a stale socket and opens a
+                # healthy replacement before a retrieval query uses it.
+                check=ConnectionPool.check_connection,
                 kwargs={"row_factory": dict_row},
                 open=True,
             )

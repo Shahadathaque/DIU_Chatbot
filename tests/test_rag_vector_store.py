@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -57,6 +59,41 @@ def test_pgvector_accepts_provider_versioned_hosted_embedding_model() -> None:
     assert isinstance(store, PgVectorStore)
     assert store.embedding_model_name == "gemini-embedding-2"
     assert store.embedding_model_revision is None
+
+
+def test_pgvector_pool_checks_idle_connections_before_checkout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    created_with = {}
+    connection_context = object()
+
+    class FakeConnectionPool:
+        @staticmethod
+        def check_connection(_connection) -> None:
+            return None
+
+        def __init__(self, **kwargs) -> None:
+            created_with.update(kwargs)
+
+        def connection(self):
+            return connection_context
+
+    monkeypatch.setitem(
+        sys.modules,
+        "psycopg_pool",
+        SimpleNamespace(ConnectionPool=FakeConnectionPool),
+    )
+    store = PgVectorStore(
+        "postgresql://example.invalid/diu",
+        embedding_dimension=3,
+        embedding_model_name="example/model",
+        embedding_model_revision="a" * 40,
+    )
+
+    result = store._connection(SimpleNamespace(), object())
+
+    assert result is connection_context
+    assert created_with["check"] is FakeConnectionPool.check_connection
 
 
 def test_table_names_are_lowercase_for_safe_regclass_lookup() -> None:

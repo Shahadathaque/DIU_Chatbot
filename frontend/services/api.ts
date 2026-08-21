@@ -21,7 +21,7 @@ const API_URL = (
   process.env.NEXT_PUBLIC_API_URL?.trim() || "http://localhost:8000"
 ).replace(/\/+$/, "");
 export const REQUEST_TIMEOUT_MS = 90_000;
-export const STREAM_REQUEST_TIMEOUT_MS = 45_000;
+export const STREAM_REQUEST_TIMEOUT_MS = 120_000;
 
 export const isMockMode = process.env.NEXT_PUBLIC_USE_MOCK_API !== "false";
 
@@ -150,7 +150,13 @@ export async function streamChatMessage(
         token?: string;
         full?: string;
         response?: ChatResponse;
+        error?: { message?: string };
       };
+      if (event === "error") {
+        throw new ApiError(
+          data.error?.message || "The admission service was interrupted. Please try again.",
+        );
+      }
       if (data.token) onToken(data.token, data.full ?? data.token);
       if (event === "done" && data.response) completed = data.response;
     };

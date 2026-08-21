@@ -37,6 +37,9 @@ def test_stream_endpoint_emits_tokens_and_final_response() -> None:
 
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/event-stream")
+    assert response.text.startswith(
+        'event: status\ndata: {"status": "processing"}\n\n'
+    )
     assert '"token"' in response.text
     done = [
         block
@@ -45,6 +48,28 @@ def test_stream_endpoint_emits_tokens_and_final_response() -> None:
     ][0]
     payload = json.loads(next(line[6:] for line in done.splitlines() if line.startswith("data:")))
     assert payload["response"]["answer"].startswith("Bring the documents")
+
+
+def test_stream_endpoint_emits_safe_error_after_headers() -> None:
+    class FailingService:
+        def answer(self, message, language, history=None):
+            del message, language, history
+            raise RuntimeError("private database connection details")
+
+    app.dependency_overrides[get_chat_service] = lambda: FailingService()
+    try:
+        response = TestClient(app).post(
+            "/api/chat/stream",
+            json={"message": "What documents are needed?", "language": "en"},
+        )
+    finally:
+        app.dependency_overrides.pop(get_chat_service, None)
+
+    assert response.status_code == 200
+    assert "event: error" in response.text
+    assert "The admission service was interrupted" in response.text
+    assert "private database connection details" not in response.text
+    assert "event: done" not in response.text
 
 
 def test_stream_endpoint_validates_before_service_resolution(monkeypatch) -> None:

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
+import logging
 from functools import lru_cache
 from typing import AsyncIterator
 
@@ -19,6 +21,8 @@ from rag.config import get_rag_settings
 from rag.retriever import create_retriever
 
 router = APIRouter(tags=["chat"])
+LOGGER = logging.getLogger(__name__)
+_STREAM_KEEPALIVE_SECONDS = 10.0
 
 
 @lru_cache
@@ -101,12 +105,46 @@ async def stream_chat(
     """Stream a validated chat response as SSE without changing ``/api/chat``."""
 
     async def events() -> AsyncIterator[str]:
-        response = await run_in_threadpool(
-            service.answer,
-            payload.message,
-            payload.language,
-            payload.history,
+        # Commit the stream immediately and keep it active while retrieval or a
+        # hosted model is working. This avoids idle proxies treating a healthy,
+        # slow first request as an empty response.
+        yield _sse_event({"status": "processing"}, event="status")
+        answer_task = asyncio.create_task(
+            run_in_threadpool(
+                service.answer,
+                payload.message,
+                payload.language,
+                payload.history,
+            )
         )
+        try:
+            while True:
+                try:
+                    response = await asyncio.wait_for(
+                        asyncio.shield(answer_task),
+                        timeout=_STREAM_KEEPALIVE_SECONDS,
+                    )
+                    break
+                except asyncio.TimeoutError:
+                    yield ": keep-alive\n\n"
+        except ApiError as error:
+            yield _sse_event(
+                {"error": {"code": error.code, "message": error.message}},
+                event="error",
+            )
+            return
+        except Exception:
+            LOGGER.exception("Chat stream failed after response headers were sent")
+            yield _sse_event(
+                {
+                    "error": {
+                        "code": "stream_failed",
+                        "message": "The admission service was interrupted. Please try again.",
+                    }
+                },
+                event="error",
+            )
+            return
         full = ""
         for token in _text_tokens(response.answer):
             full += token

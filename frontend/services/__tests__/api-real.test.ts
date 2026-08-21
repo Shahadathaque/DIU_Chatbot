@@ -255,4 +255,33 @@ describe("real-mode API client", () => {
     expect(tokens).toEqual(["Hello "]);
     expect(response.answer).toBe("Hello world.");
   });
+
+  it("surfaces a server error event instead of an incomplete-answer message", async () => {
+    const { streamChatMessage } = await loadRealApi();
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(
+          encoder.encode('event: status\ndata: {"status":"processing"}\n\n'),
+        );
+        controller.enqueue(
+          encoder.encode(
+            'event: error\ndata: {"error":{"code":"stream_failed","message":"The admission service was interrupted. Please try again."}}\n\n',
+          ),
+        );
+        controller.close();
+      },
+    });
+    installFetchMock({
+      ok: true,
+      status: 200,
+      body: stream as unknown as ReadableStream<Uint8Array<ArrayBuffer>>,
+    });
+
+    await expect(
+      streamChatMessage({ message: "Hello", language: "en" }, () => undefined),
+    ).rejects.toMatchObject({
+      message: "The admission service was interrupted. Please try again.",
+    });
+  });
 });
