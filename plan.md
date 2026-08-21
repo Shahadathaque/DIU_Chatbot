@@ -690,3 +690,11 @@ scope), record it here with a short reason._
   official source therefore remains content-hash volatile across close-together
   collections even though programs (52), sources (18), and production health remain
   stable.
+- **2026-08-22** — Vercel Speed Insights integration completed. Installed the
+  official `@vercel/speed-insights` package in the frontend workspace (not the
+  repository root) and mounted its Next.js component beside Web Analytics in the
+  root layout. npm's latest optional Svelte peer graph conflicted with the existing
+  Vitest/Vite tree, so installation ignored that unrelated optional framework peer;
+  the actual Next.js 16 and React 19 peer ranges are satisfied. Verification passed
+  with 31 frontend tests, TypeScript, ESLint, production build, and zero npm audit
+  vulnerabilities.
