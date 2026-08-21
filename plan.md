@@ -684,3 +684,9 @@ scope), record it here with a short reason._
   existing Vercel project was authenticated and deployed successfully as production
   deployment `dpl_DhnQ33PZdy9KpPAmGaCE4WzrwoYP`; its canonical alias, guides,
   metadata, sitemap, robots, and required warning text all pass public checks.
+  Follow-up refresh run `32526339606` succeeded in 6m47s and uploaded the corrected
+  5.7 MB non-secret evidence artifact. It again reused 300/301 embeddings and
+  transactionally replaced one changed/stale chunk without catalog growth; one
+  official source therefore remains content-hash volatile across close-together
+  collections even though programs (52), sources (18), and production health remain
+  stable.
