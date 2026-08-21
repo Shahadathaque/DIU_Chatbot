@@ -6,6 +6,7 @@ import hashlib
 import json
 from copy import deepcopy
 from dataclasses import replace
+from pathlib import Path
 
 import pytest
 
@@ -21,6 +22,14 @@ from rag.refresh import (
 )
 from rag.vector_store import InMemoryVectorStore
 from tests.rag_helpers import cleaned_record, knowledge_chunk
+
+
+def test_workflow_uploads_hidden_refresh_evidence() -> None:
+    workflow = Path(".github/workflows/refresh-knowledge.yml").read_text(
+        encoding="utf-8"
+    )
+    assert "path: .refresh-work/" in workflow
+    assert "include-hidden-files: true" in workflow
 
 
 class FakeEmbedder:

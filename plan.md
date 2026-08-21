@@ -675,8 +675,12 @@ scope), record it here with a short reason._
   `e69a4532`; the existing Render service is live on that exact revision, all five
   known tuition regressions pass publicly, and non-credentialed exact-origin CORS
   is active. Browser visual inspection remains unavailable because no in-app or
-  extension browser is connected. The existing Vercel project rejected the CLI
-  deployment as unauthorized and its Git integration did not publish the revision.
-  The refresh workflow is pushed, but its first run is blocked until the user
-  explicitly authorizes transferring the ignored local database/embedding values
-  into GitHub repository secrets.
+  extension browser is connected. After explicit authorization, securely configured
+  the two required GitHub Actions secrets without exposing their values. Refresh run
+  `32525421258` succeeded in 6m24s and published 301 chunks, reusing 300 embeddings,
+  replacing one changed/stale chunk, and retaining 52 programs and 18 sources. Fixed
+  the workflow artifact upload to include the hidden `.refresh-work` directory;
+  backend verification is now 467 passed with 41 integrations deselected. The
+  existing Vercel project was authenticated and deployed successfully as production
+  deployment `dpl_DhnQ33PZdy9KpPAmGaCE4WzrwoYP`; its canonical alias, guides,
+  metadata, sitemap, robots, and required warning text all pass public checks.

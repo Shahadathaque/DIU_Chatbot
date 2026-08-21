@@ -51,5 +51,6 @@ jobs:
         with:
           name: diu-refresh-${{ github.run_id }}
           path: .refresh-work/
+          include-hidden-files: true
           if-no-files-found: warn
           retention-days: 90
