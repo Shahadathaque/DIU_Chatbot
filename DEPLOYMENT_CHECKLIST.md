@@ -76,3 +76,12 @@ values. Never paste credentials into this file or commit a real `.env` file.
 - [ ] Record the deployed commit and environment-variable version
 - [ ] Know how to redeploy the previous Vercel/backend release
 - [ ] After an environment change, restart/redeploy and repeat the health check
+
+## Scheduled knowledge refresh
+
+- [ ] Add GitHub Actions secrets `DATABASE_URL` and `EMBEDDING_API_KEY`
+- [ ] Confirm workflow model/dimension/table values match Render exactly
+- [ ] Run `Refresh DIU knowledge` manually once and inspect its safe change summary
+- [ ] Confirm a second idempotent run reuses unchanged embeddings
+- [ ] Confirm the workflow runs approximately every 12 hours
+- [ ] Review [automatic refresh and recovery](docs/backend/automatic_refresh.md)

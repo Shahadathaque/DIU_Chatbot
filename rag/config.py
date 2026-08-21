@@ -36,6 +36,8 @@ class RagSettings(BaseSettings):
     embedding_api_model: Optional[str] = None
     embedding_api_timeout: float = Field(30.0, gt=0, le=120.0)
     embedding_api_request_interval: float = Field(0.0, ge=0.0, le=60.0)
+    embedding_api_max_retries: int = Field(2, ge=0, le=5)
+    embedding_api_retry_backoff: float = Field(0.5, ge=0.0, le=30.0)
     embedding_api_send_dimensions: bool = True
 
     rag_vector_backend: Literal["pgvector", "local"] = "pgvector"
@@ -177,6 +179,8 @@ class GeneratorSettings(BaseSettings):
     generator_api_reasoning_effort: Optional[
         Literal["none", "minimal", "low", "medium", "high"]
     ] = None
+    generator_api_max_retries: int = Field(2, ge=0, le=5)
+    generator_api_retry_backoff: float = Field(0.5, ge=0.0, le=30.0)
     generator_lora_adapter: Optional[Path] = None
 
     model_config = SettingsConfigDict(

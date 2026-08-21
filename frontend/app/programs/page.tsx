@@ -1,10 +1,11 @@
-import type { Metadata } from "next";
 import { ProgramsExperience } from "@/components/programs/programs-experience";
+import { createPageMetadata } from "@/lib/site";
 
-export const metadata: Metadata = {
-  title: "Programs",
-  description: "Browse DIU admission-related programs from the research backend.",
-};
+export const metadata = createPageMetadata({
+  title: "DIU Programs",
+  description: "Browse Daffodil International University programs available through the verified-source research catalog.",
+  path: "/programs",
+});
 
 export default function ProgramsPage() {
   return <ProgramsExperience />;

@@ -10,6 +10,7 @@ const navItems = [
   { href: "/chat", label: "Ask AI" },
   { href: "/eligibility", label: "Eligibility" },
   { href: "/programs", label: "Programs" },
+  { href: "/blog", label: "Guides" },
 ];
 
 export function Header() {
@@ -32,7 +33,7 @@ export function Header() {
               DIU Admission AI
             </span>
             <span className="hidden text-[11px] font-medium text-muted sm:block">
-              Research prototype
+              Verified-source guidance
             </span>
           </span>
         </Link>

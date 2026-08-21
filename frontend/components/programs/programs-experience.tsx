@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { ProgramCard } from "@/components/programs/program-card";
 import { GraduationIcon, SearchIcon, WarningIcon } from "@/components/ui/icons";
 import { ApiError, getPrograms, isMockMode } from "@/services/api";
@@ -67,12 +68,15 @@ export function ProgramsExperience() {
             Explore DIU programs
           </h1>
           <p className="mt-3 text-sm leading-6 text-muted sm:text-base">
-            Browse admission-related programs returned by the research backend. Program
-            facts shown here are only as current as the API response.
+            Browse admission-related programs in the project&apos;s verified-source catalog.
+            Program information can change, so confirm important details with DIU.
           </p>
+          <Link className="mt-3 inline-flex text-sm font-bold text-brand hover:text-brand-dark" href="/blog/diu-programs-guide">
+            Read the program selection guide →
+          </Link>
         </div>
         <p className="text-xs font-semibold text-muted">
-          {isMockMode ? "Demo / mock API" : "Live research API"}
+          {isMockMode ? "Demo program catalog" : "Verified-source program catalog"}
         </p>
       </div>
 

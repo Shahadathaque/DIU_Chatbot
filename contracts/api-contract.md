@@ -96,7 +96,8 @@ Successful response (`200`):
   "checks": {
     "database": "ok",
     "model_endpoint": "ok",
-    "rag_backend": "ok"
+    "rag_backend": "ok",
+    "runtime_catalog": "ok"
   }
 }
 ```
@@ -109,6 +110,7 @@ Successful response (`200`):
 | `checks.database` | string | yes | `ok`, `not_configured`, or `error`. |
 | `checks.model_endpoint` | string | yes | `ok`, `not_configured`, or `error`. |
 | `checks.rag_backend` | string | yes | `ok`, `not_configured`, or `error`. |
+| `checks.runtime_catalog` | string | yes | `ok`, `not_configured`, or `error`. |
 
 The endpoint performs bounded dependency checks when services are configured.
 `not_configured` is expected for optional services in development. A dependency

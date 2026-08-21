@@ -7,7 +7,8 @@ local fallback when Transformers-on-MPS is too slow.
 
 from __future__ import annotations
 
-from typing import Dict, List, Optional, Sequence
+import time
+from typing import Callable, Dict, List, Optional, Sequence
 
 import httpx
 
@@ -25,6 +26,7 @@ class OpenAICompatibleGenerator:
         settings: GeneratorSettings,
         *,
         client: Optional[httpx.Client] = None,
+        sleeper: Callable[[float], None] = time.sleep,
     ) -> None:
         base_url = (settings.generator_api_base or "").rstrip("/")
         if not base_url:
@@ -41,7 +43,10 @@ class OpenAICompatibleGenerator:
         self._base_url = base_url
         self._api_key = settings.generator_api_key
         self._reasoning_effort = settings.generator_api_reasoning_effort
+        self._max_retries = settings.generator_api_max_retries
+        self._retry_backoff = settings.generator_api_retry_backoff
         self._client = client
+        self._sleep = sleeper
 
     def _endpoint(self) -> str:
         return f"{self._base_url}/chat/completions"
@@ -68,22 +73,33 @@ class OpenAICompatibleGenerator:
         }
         if self._reasoning_effort:
             payload["reasoning_effort"] = self._reasoning_effort
-        try:
-            if self._client is not None:
-                response = self._client.post(
-                    self._endpoint(), json=payload, headers=headers
-                )
-            else:
-                with httpx.Client(
-                    timeout=httpx.Timeout(_REQUEST_TIMEOUT_SECONDS)
-                ) as client:
-                    response = client.post(
+        response = None
+        for attempt in range(self._max_retries + 1):
+            try:
+                if self._client is not None:
+                    response = self._client.post(
                         self._endpoint(), json=payload, headers=headers
                     )
-        except httpx.HTTPError as error:
-            raise GeneratorUnavailableError(
-                "generator request failed: {}".format(error.__class__.__name__)
-            ) from error
+                else:
+                    with httpx.Client(
+                        timeout=httpx.Timeout(_REQUEST_TIMEOUT_SECONDS)
+                    ) as client:
+                        response = client.post(
+                            self._endpoint(), json=payload, headers=headers
+                        )
+            except httpx.HTTPError as error:
+                if attempt < self._max_retries:
+                    self._sleep(self._retry_backoff * (2**attempt))
+                    continue
+                raise GeneratorUnavailableError(
+                    "generator request failed: {}".format(error.__class__.__name__)
+                ) from error
+            if response.status_code == 429 or response.status_code >= 500:
+                if attempt < self._max_retries:
+                    self._sleep(_retry_delay(response, self._retry_backoff, attempt))
+                    continue
+            break
+        assert response is not None
         if response.status_code >= 400:
             raise GeneratorUnavailableError(
                 "generator returned HTTP {}".format(response.status_code)
@@ -96,6 +112,15 @@ class OpenAICompatibleGenerator:
                 "generator returned an unexpected response body"
             ) from error
         return str(content).strip()
+
+
+def _retry_delay(response: httpx.Response, backoff: float, attempt: int) -> float:
+    delay = backoff * (2**attempt)
+    try:
+        retry_after = float(response.headers.get("Retry-After", "0"))
+    except ValueError:
+        retry_after = 0.0
+    return min(30.0, max(delay, retry_after))
 
 
 __all__ = ["OpenAICompatibleGenerator"]

@@ -1,7 +1,9 @@
 """FastAPI application entry point."""
 
 import logging
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+from typing import AsyncIterator
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -20,22 +22,37 @@ logger = logging.getLogger(__name__)
 settings = get_settings()
 configure_logging(settings.log_level)
 
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    """Validate configuration on startup using FastAPI's lifespan contract."""
+
+    await startup_validation()
+    yield
+
 app = FastAPI(
     title="DIU Admission AI API",
     description="Research backend for the DIU Admission AI project.",
     version="0.1.0",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        origin.strip()
-        for origin in settings.cors_origins.split(",")
-        if origin.strip()
-    ],
+    allow_origins=(
+        settings.production_cors_origins()
+        if settings.app_env.strip().lower() == "production"
+        else [
+            origin.strip().rstrip("/")
+            for origin in settings.cors_origins.split(",")
+            if origin.strip()
+        ]
+    ),
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["Content-Type"],
-    allow_credentials=True,
+    # The API uses no browser cookies or HTTP authentication. Keeping credential
+    # mode disabled matches the frontend fetch client and reduces CORS exposure.
+    allow_credentials=False,
 )
 register_exception_handlers(app)
 app.include_router(health_router)
@@ -70,7 +87,6 @@ def _configure_optional_sentry() -> None:
 _configure_optional_sentry()
 
 
-@app.on_event("startup")
 async def startup_validation() -> None:
     """Log runtime configuration and validate production settings."""
 

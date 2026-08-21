@@ -92,16 +92,17 @@ class ProgramsService:
 
     def list_programs(self) -> ProgramsResponse:
         # Injected records are used by tests and callers that intentionally
-        # provide a snapshot; only the default cleaned snapshot is cached.
-        if self._cache_default:
+        # provide a snapshot. Database rows are intentionally not process-cached:
+        # a completed refresh must become visible without waiting for the local
+        # TTL or restarting every API worker.
+        use_database = self._records is None and self._use_database()
+        cache_local_snapshot = self._cache_default and not use_database
+        if cache_local_snapshot:
             cached = _PROGRAMS_CACHE.get()
             if cached is not None:
                 return cached
-        if self._records is None and self._use_database():
-            response = self._list_database_programs()
-            if self._cache_default:
-                _PROGRAMS_CACHE.set(response)
-            return response
+        if use_database:
+            return self._list_database_programs()
         records = list(self._records if self._records is not None else self._load_records())
         programs: List[Program] = []
         for record in records:
@@ -119,7 +120,7 @@ class ProgramsService:
                 self._dedupe(programs, records=records)
             ),
         )
-        if self._cache_default:
+        if cache_local_snapshot:
             _PROGRAMS_CACHE.set(response)
         return response
 

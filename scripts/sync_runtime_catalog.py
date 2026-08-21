@@ -63,6 +63,47 @@ def synchronize_runtime_catalog(
 ) -> Dict[str, Any]:
     """Validate, derive, and transactionally synchronize the runtime catalog."""
 
+    programs, sources, metadata, root = prepare_runtime_catalog(
+        cleaned_root=cleaned_root
+    )
+    result: Dict[str, Any] = {
+        "cleaned_root": str(root),
+        "dataset_version": metadata.dataset_version,
+        "dataset_fingerprint": metadata.dataset_fingerprint,
+        "manifest_hash": metadata.manifest_hash,
+        "programs": metadata.program_count,
+        "sources": metadata.source_count,
+        "dry_run": dry_run,
+        "synchronized": False,
+    }
+    if dry_run:
+        return result
+
+    resolved_repository = repository
+    if resolved_repository is None:
+        resolved_url = database_url or Settings().database_url
+        if not resolved_url:
+            raise ValueError("DATABASE_URL is required to synchronize the runtime catalog")
+        resolved_repository = RuntimeCatalogRepository(resolved_url)
+    resolved_repository.synchronize(
+        programs=programs,
+        sources=sources,
+        metadata=metadata,
+    )
+    result["synchronized"] = True
+    return result
+
+
+def prepare_runtime_catalog(
+    *, cleaned_root: Optional[Path] = None
+) -> tuple[
+    list[Dict[str, Any]],
+    list[Dict[str, Any]],
+    RuntimeCatalogMetadata,
+    Path,
+]:
+    """Derive validated catalog rows without opening a database connection."""
+
     rag_settings = RagSettings()
     root = Path(cleaned_root or rag_settings.rag_cleaned_data_path).resolve()
     manifest_path = root / "manifest.json"
@@ -92,32 +133,7 @@ def synchronize_runtime_catalog(
         program_count=len(programs),
         source_count=len(sources),
     )
-    result: Dict[str, Any] = {
-        "cleaned_root": str(root),
-        "dataset_version": metadata.dataset_version,
-        "dataset_fingerprint": metadata.dataset_fingerprint,
-        "manifest_hash": metadata.manifest_hash,
-        "programs": metadata.program_count,
-        "sources": metadata.source_count,
-        "dry_run": dry_run,
-        "synchronized": False,
-    }
-    if dry_run:
-        return result
-
-    resolved_repository = repository
-    if resolved_repository is None:
-        resolved_url = database_url or Settings().database_url
-        if not resolved_url:
-            raise ValueError("DATABASE_URL is required to synchronize the runtime catalog")
-        resolved_repository = RuntimeCatalogRepository(resolved_url)
-    resolved_repository.synchronize(
-        programs=programs,
-        sources=sources,
-        metadata=metadata,
-    )
-    result["synchronized"] = True
-    return result
+    return programs, sources, metadata, root
 
 
 def _program_row(

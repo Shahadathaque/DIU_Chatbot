@@ -54,6 +54,7 @@ export function ChatExperience() {
   const [input, setInput] = useState("");
   const [language, setLanguage] = useState<Language>("en");
   const [isLoading, setIsLoading] = useState(false);
+  const [isWaitingForStream, setIsWaitingForStream] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [failedRequest, setFailedRequest] = useState<ChatRequest | null>(null);
   const scrollAnchorRef = useRef<HTMLDivElement>(null);
@@ -61,7 +62,7 @@ export function ChatExperience() {
 
   useEffect(() => {
     scrollAnchorRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [messages, isLoading, error]);
+  }, [messages, isLoading, isWaitingForStream, error]);
 
   async function submitMessage(message: string, isRetry = false) {
     const trimmed = message.trim();
@@ -84,6 +85,7 @@ export function ChatExperience() {
     setError(null);
     setFailedRequest(null);
     setIsLoading(true);
+    setIsWaitingForStream(true);
 
     let pendingAssistantId: string | null = null;
 
@@ -96,6 +98,7 @@ export function ChatExperience() {
           { id: assistantId, role: "assistant", content: "" },
         ]);
         const response = await streamChatMessage(request, (_token, full) => {
+          setIsWaitingForStream(false);
           setMessages((current) =>
             current.map((item) =>
               item.id === assistantId ? { ...item, content: full } : item,
@@ -116,6 +119,7 @@ export function ChatExperience() {
         );
       } else {
         const response = await sendChatMessage(request);
+        setIsWaitingForStream(false);
         setMessages((current) => [
           ...current,
           {
@@ -128,6 +132,7 @@ export function ChatExperience() {
         ]);
       }
     } catch (requestError) {
+      setIsWaitingForStream(false);
       if (pendingAssistantId) {
         const failedAssistantId = pendingAssistantId;
         setMessages((current) =>
@@ -142,6 +147,7 @@ export function ChatExperience() {
       setFailedRequest(request);
     } finally {
       setIsLoading(false);
+      setIsWaitingForStream(false);
       window.setTimeout(() => textareaRef.current?.focus(), 50);
     }
   }
@@ -151,6 +157,7 @@ export function ChatExperience() {
     setError(null);
     setFailedRequest(null);
     setInput("");
+    setIsWaitingForStream(false);
     textareaRef.current?.focus();
   }
 
@@ -161,7 +168,7 @@ export function ChatExperience() {
           <span className="grid size-11 place-items-center rounded-2xl bg-brand text-white shadow-[0_8px_20px_rgba(8,120,63,0.2)]">
             <ChatIcon size={21} />
           </span>
-          <h1 className="mt-5 text-xl font-bold tracking-[-0.03em]">Admission assistant</h1>
+          <h2 className="mt-5 text-xl font-bold tracking-[-0.03em]">Admission assistant</h2>
           <p className="mt-2 text-sm leading-6 text-muted">
             Ask about requirements, costs, documents, scholarships, dates, or the
             application process.
@@ -172,7 +179,7 @@ export function ChatExperience() {
               Answer transparency
             </div>
             <p className="mt-2 text-xs leading-5 text-muted">
-              Source links appear only when the backend provides them.
+              Source links appear when compatible verified evidence supports an answer.
             </p>
           </div>
           <div className="mt-auto pt-8">
@@ -180,7 +187,7 @@ export function ChatExperience() {
               <span
                 className={`size-2 rounded-full ${isMockMode ? "bg-amber-400" : "bg-emerald-500"}`}
               />
-              {isMockMode ? "Using demo responses" : "Connected to research API"}
+              {isMockMode ? "Using demo responses" : "Verified sources enabled"}
             </div>
           </div>
         </aside>
@@ -284,7 +291,7 @@ export function ChatExperience() {
                       </div>
                     ) : null,
                   )}
-                  {isLoading ? <TypingIndicator /> : null}
+                  {isLoading && isWaitingForStream ? <TypingIndicator /> : null}
                   {error ? (
                     <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-900" role="alert">
                       <div className="flex items-start gap-3">

@@ -194,6 +194,46 @@ def test_production_accepts_canonical_generator_settings() -> None:
 
 
 @pytest.mark.parametrize(
+    "cors_origins",
+    [
+        "*",
+        "https://frontend.example/path",
+        "https://user:password@frontend.example",
+        "javascript:alert(1)",
+    ],
+)
+def test_production_rejects_unsafe_or_non_origin_cors_values(cors_origins: str) -> None:
+    settings = Settings(
+        _env_file=None,
+        app_env="production",
+        database_url="postgresql://user:password@db.example/diu",
+        generator_backend="openai",
+        generator_api_base="https://model.example/v1",
+        generator_api_key="provider-secret",
+        generator_api_model="provider-model",
+        runtime_catalog_backend="database",
+        rag_vector_backend="pgvector",
+        embedding_backend="openai",
+        embedding_api_base="https://model.example/v1",
+        embedding_api_key="embedding-secret",
+        embedding_api_model="embedding-model",
+        cors_origins=cors_origins,
+    )
+
+    with pytest.raises(ValueError, match="CORS_ORIGINS"):
+        settings.validate_production_settings()
+
+
+def test_production_cors_origins_are_deduplicated_and_normalized() -> None:
+    settings = Settings(
+        _env_file=None,
+        cors_origins="https://frontend.example/, https://frontend.example",
+    )
+
+    assert settings.production_cors_origins() == ["https://frontend.example"]
+
+
+@pytest.mark.parametrize(
     ("field", "message"),
     [
         ("generator_api_key", "GENERATOR_API_KEY required in production"),

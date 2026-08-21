@@ -38,11 +38,11 @@ def test_cors_headers_present() -> None:
     assert "access-control-allow-origin" in response.headers
 
 
-def test_cors_credentials() -> None:
+def test_cors_does_not_enable_unused_browser_credentials() -> None:
     response = client.get("/api/health", headers={"Origin": LOCAL_ORIGIN})
 
     assert response.status_code == 200
-    assert response.headers["access-control-allow-credentials"] == "true"
+    assert "access-control-allow-credentials" not in response.headers
 
 
 def test_cors_methods() -> None:
@@ -52,7 +52,7 @@ def test_cors_methods() -> None:
 
     assert middleware.kwargs["allow_methods"] == ["GET", "POST", "OPTIONS"]
     assert middleware.kwargs["allow_headers"] == ["Content-Type"]
-    assert middleware.kwargs["allow_credentials"] is True
+    assert middleware.kwargs["allow_credentials"] is False
 
 
 def test_cors_unauthorized_origin_is_not_allowed() -> None:

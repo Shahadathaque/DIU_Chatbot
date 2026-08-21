@@ -97,6 +97,39 @@ def test_sources_database_backend_does_not_load_local_files(monkeypatch) -> None
     assert [source.id for source in response.sources] == ["DIU-ADM-001"]
 
 
+def test_default_database_sources_are_not_hidden_by_process_cache(monkeypatch) -> None:
+    from backend.core.config import get_settings
+
+    class ChangingRepository:
+        calls = 0
+
+        def list_sources(self):
+            self.calls += 1
+            return [
+                {
+                    "id": f"DIU-{self.calls}",
+                    "title": f"Source {self.calls}",
+                    "url": f"https://daffodilvarsity.edu.bd/source/{self.calls}",
+                }
+            ]
+
+    repository = ChangingRepository()
+    monkeypatch.setattr(
+        "backend.services.sources_service.RuntimeCatalogRepository",
+        lambda _url: repository,
+    )
+    get_settings.cache_clear()
+    monkeypatch.setenv("RUNTIME_CATALOG_BACKEND", "database")
+    monkeypatch.setenv("DATABASE_URL", "postgresql://example.invalid/diu")
+
+    first = SourcesService().list_sources()
+    second = SourcesService().list_sources()
+
+    assert first.sources[0].id == "DIU-1"
+    assert second.sources[0].id == "DIU-2"
+    get_settings.cache_clear()
+
+
 def test_missing_cleaned_dataset_returns_recovery_error(tmp_path) -> None:
     service = SourcesService(cleaned_root=str(tmp_path / "missing-cleaned"))
     client = _client(service)

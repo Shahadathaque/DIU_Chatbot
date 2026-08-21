@@ -9,6 +9,9 @@ below are examples only.
 | --- | --- | --- | --- |
 | `NEXT_PUBLIC_API_URL` | `https://your-backend.example` | Yes | Public FastAPI origin; no trailing slash. |
 | `NEXT_PUBLIC_USE_MOCK_API` | `false` | Yes | Disable mock responses in production. |
+| `NEXT_PUBLIC_SITE_URL` | `https://your-app.vercel.app` | Recommended | Exact public HTTPS origin for canonical URLs, sitemap, and JSON-LD. |
+| `GOOGLE_SITE_VERIFICATION` | provider token | No | Google Search Console HTML verification token; public metadata, not a secret. |
+| `BING_SITE_VERIFICATION` | provider token | No | Bing Webmaster Tools verification token; public metadata, not a secret. |
 
 `NEXT_PUBLIC_*` values are embedded at build time. Redeploy after changing
 them. These values are public; never place a secret in a `NEXT_PUBLIC_*`
@@ -34,6 +37,8 @@ variable.
 | `EMBEDDING_API_KEY` | `provider-key-placeholder` | Yes in production | Backend-only secret. It may equal the generator key. |
 | `EMBEDDING_API_MODEL` | `gemini-embedding-2` | Yes in production | Must be the model used to build the configured vector table. |
 | `EMBEDDING_DIMENSION` | `768` | Yes in production | Must match the provider output and pgvector table metadata. |
+| `EMBEDDING_API_MAX_RETRIES` | `2` | No | Bounded retries for transport errors, HTTP 429, and HTTP 5xx. |
+| `EMBEDDING_API_RETRY_BACKOFF` | `0.5` | No | Initial exponential retry delay in seconds; provider `Retry-After` is honored up to 30 seconds. |
 | `CORS_ORIGINS` | `https://your-app.vercel.app,https://your-domain.example` | Yes in production | Exact comma-separated browser origins; never `*`. |
 | `MODEL_NAME` | `qwen/qwen-2.5-1.5b-instruct` | No | Model identifier used by the configured model service. |
 | `EMBEDDING_MODEL_NAME` | `intfloat/multilingual-e5-base` | Local only | Local research/offline embedding model. Hosted mode derives this from `EMBEDDING_API_MODEL`. |
@@ -43,6 +48,8 @@ variable.
 | `DB_POOL_TIMEOUT` | `10` | No | Seconds to wait for a pooled connection. |
 | `RATE_LIMIT_PER_MINUTE` | `30` | No | Production chat requests per client IP per minute. |
 | `SENTRY_DSN` | empty | No | Optional error monitoring; only active when `sentry-sdk` is installed. |
+| `GENERATOR_API_MAX_RETRIES` | `2` | No | Bounded retries for transport errors, HTTP 429, and HTTP 5xx. |
+| `GENERATOR_API_RETRY_BACKOFF` | `0.5` | No | Initial exponential retry delay in seconds. |
 
 Development defaults are documented in `backend/.env.example`. Production
 requires database catalog + pgvector backends, non-empty database/generator/

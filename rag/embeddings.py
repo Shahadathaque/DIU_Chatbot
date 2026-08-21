@@ -136,6 +136,8 @@ class OpenAICompatibleEmbedder:
         batch_size: int = 16,
         timeout: float = 30.0,
         request_interval: float = 0.0,
+        max_retries: int = 2,
+        retry_backoff: float = 0.5,
         send_dimensions: bool = True,
         client: Optional[httpx.Client] = None,
         sleeper: Callable[[float], None] = time.sleep,
@@ -148,6 +150,8 @@ class OpenAICompatibleEmbedder:
             raise ValueError("embedding dimension and batch size must be positive")
         if request_interval < 0:
             raise ValueError("embedding request interval cannot be negative")
+        if not 0 <= max_retries <= 5 or retry_backoff < 0:
+            raise ValueError("embedding retry settings are invalid")
         self.model_name = model_name
         self.model_revision = model_revision
         self.dimension = dimension
@@ -156,6 +160,8 @@ class OpenAICompatibleEmbedder:
         self._api_key = api_key
         self._timeout = timeout
         self._request_interval = request_interval
+        self._max_retries = max_retries
+        self._retry_backoff = retry_backoff
         self._send_dimensions = send_dimensions
         self._client = client
         self._sleep = sleeper
@@ -186,20 +192,31 @@ class OpenAICompatibleEmbedder:
         }
         if self._send_dimensions:
             payload["dimensions"] = self.dimension
-        try:
-            if self._client is not None:
-                response = self._client.post(
-                    f"{self._base_url}/embeddings", json=payload, headers=headers
-                )
-            else:
-                with httpx.Client(timeout=httpx.Timeout(self._timeout)) as client:
-                    response = client.post(
+        response = None
+        for attempt in range(self._max_retries + 1):
+            try:
+                if self._client is not None:
+                    response = self._client.post(
                         f"{self._base_url}/embeddings", json=payload, headers=headers
                     )
-        except httpx.HTTPError as error:
-            raise EmbeddingUnavailableError(
-                f"embedding request failed: {error.__class__.__name__}"
-            ) from error
+                else:
+                    with httpx.Client(timeout=httpx.Timeout(self._timeout)) as client:
+                        response = client.post(
+                            f"{self._base_url}/embeddings", json=payload, headers=headers
+                        )
+            except httpx.HTTPError as error:
+                if attempt < self._max_retries:
+                    self._sleep(self._retry_backoff * (2**attempt))
+                    continue
+                raise EmbeddingUnavailableError(
+                    f"embedding request failed: {error.__class__.__name__}"
+                ) from error
+            if response.status_code == 429 or response.status_code >= 500:
+                if attempt < self._max_retries:
+                    self._sleep(_retry_delay(response, self._retry_backoff, attempt))
+                    continue
+            break
+        assert response is not None
         if response.status_code >= 400:
             raise EmbeddingUnavailableError(
                 f"embedding provider returned HTTP {response.status_code}"
@@ -263,6 +280,8 @@ def create_embedder(
             batch_size=resolved.embedding_batch_size,
             timeout=resolved.embedding_api_timeout,
             request_interval=resolved.embedding_api_request_interval,
+            max_retries=resolved.embedding_api_max_retries,
+            retry_backoff=resolved.embedding_api_retry_backoff,
             send_dimensions=resolved.embedding_api_send_dimensions,
         )
     return SentenceTransformerEmbedder(
@@ -279,6 +298,15 @@ def _normalized(vector: Sequence[float]) -> List[float]:
     if magnitude == 0:
         raise EmbeddingUnavailableError("embedding provider returned a zero vector")
     return [value / magnitude for value in vector]
+
+
+def _retry_delay(response: httpx.Response, backoff: float, attempt: int) -> float:
+    delay = backoff * (2**attempt)
+    try:
+        retry_after = float(response.headers.get("Retry-After", "0"))
+    except ValueError:
+        retry_after = 0.0
+    return min(30.0, max(delay, retry_after))
 
 
 def validate_embeddings(

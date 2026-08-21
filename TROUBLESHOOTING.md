@@ -60,7 +60,7 @@ development.
 From a browser console on the deployed frontend:
 
 ```javascript
-fetch('https://your-backend.example/api/health', { credentials: 'include' })
+fetch('https://your-backend.example/api/health')
   .then((response) => response.json())
   .then((data) => console.log('✅ CORS working:', data))
   .catch((error) => console.error('❌ Connection error:', error));

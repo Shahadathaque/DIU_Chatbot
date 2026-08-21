@@ -451,6 +451,103 @@ def test_structured_tuition_answer_preserves_table_labels_and_units() -> None:
     _reset_overrides()
 
 
+def test_structured_tuition_selects_canonical_row_among_secondary_results() -> None:
+    query = "Development Studies tuition fees"
+    fee_headers = (
+        "Full Program Name | Credit Hours | Duration | Payable During Admission | "
+        "Average Semester Fees | Total Tuition Fees | Total Program Fees"
+    )
+    unrelated = _evidence_result(
+        "other-fee",
+        content=(
+            "Tuition Fees for Local Students\n"
+            f"{fee_headers}\n"
+            "Bachelor of Development Studies | 120 | 4 Years | 10 | 20 | 30 | 40"
+        ),
+        relevance=0.97,
+    )
+    unrelated.chunk = replace(
+        unrelated.chunk,
+        category="tuition_and_fees",
+        content_type="table",
+        program="Bachelor of Development Studies",
+    )
+    expected = _evidence_result(
+        "mds-fee",
+        content=(
+            "Tuition Fees for Local Students\n"
+            f"{fee_headers}\n"
+            "Master of Development Studies (MDS) | 39 | 1 Year | 11 | 22 | 33 | 44"
+        ),
+        relevance=0.94,
+    )
+    expected.chunk = replace(
+        expected.chunk,
+        category="tuition_and_fees",
+        content_type="table",
+        program="Master of Development Studies (MDS)",
+    )
+    retriever = _FakeRetriever({query: [unrelated, expected]})
+    generator = _FakeGenerator(answer="The available information is insufficient.")
+    client = _client(retriever, generator)
+
+    response = client.post("/api/chat", json={"message": query, "language": "en"})
+
+    assert response.status_code == 200
+    answer = response.json()["answer"]
+    assert "Master of Development Studies (MDS)" in answer
+    assert "BDT 33" in answer
+    assert "Bachelor of Development Studies" not in answer
+    assert generator.calls == []
+    _reset_overrides()
+
+
+def test_explicit_postgraduate_tuition_never_uses_undergraduate_row() -> None:
+    query = "MA in English tuition fees"
+    headers = "Full Program Name | Total Tuition Fees | Total Program Fees"
+    undergraduate = _evidence_result(
+        "ba-english-fee",
+        content=(
+            "Tuition Fees for Local Students\n"
+            f"{headers}\nB.A. (Hons) in English | 111 | 222"
+        ),
+        relevance=0.99,
+    )
+    undergraduate.chunk = replace(
+        undergraduate.chunk,
+        category="tuition_and_fees",
+        content_type="table",
+        program="B.A. (Hons) in English",
+    )
+    postgraduate = _evidence_result(
+        "ma-english-fee",
+        content=(
+            "Tuition Fees for Local Students\n"
+            f"{headers}\nM. A in English | 333 | 444"
+        ),
+        relevance=0.93,
+    )
+    postgraduate.chunk = replace(
+        postgraduate.chunk,
+        category="tuition_and_fees",
+        content_type="table",
+        program="M. A in English",
+    )
+    retriever = _FakeRetriever({query: [undergraduate, postgraduate]})
+    generator = _FakeGenerator(answer="Incorrect undergraduate answer.")
+    client = _client(retriever, generator)
+
+    response = client.post("/api/chat", json={"message": query, "language": "en"})
+
+    assert response.status_code == 200
+    answer = response.json()["answer"]
+    assert "M. A in English" in answer
+    assert "BDT 333" in answer
+    assert "B.A. (Hons)" not in answer
+    assert generator.calls == []
+    _reset_overrides()
+
+
 def test_grade_based_waiver_without_program_asks_for_program() -> None:
     result = _evidence_result(
         "waiver-table",

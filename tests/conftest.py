@@ -11,17 +11,25 @@ def pytest_collection_modifyitems(config, items):
     if not integration_items:
         return
 
-    from scripts.artifacts import all_artifacts_ready, inspect_artifacts
+    from scripts.artifacts import inspect_artifacts
 
     checks = inspect_artifacts()
-    if all_artifacts_ready(checks):
-        return
-    missing = ", ".join(check.name for check in checks if not check.ready)
-    marker = pytest.mark.skip(
-        reason=(
-            f"integration artifacts unavailable ({missing}); run "
-            ".venv/bin/python scripts/artifacts.py for recovery instructions"
-        )
-    )
+    by_name = {check.name: check for check in checks}
     for item in integration_items:
-        item.add_marker(marker)
+        requirement = item.get_closest_marker("requires_artifacts")
+        required_names = tuple(requirement.args) if requirement else tuple(by_name)
+        missing = [
+            name
+            for name in required_names
+            if name not in by_name or not by_name[name].ready
+        ]
+        if not missing:
+            continue
+        item.add_marker(
+            pytest.mark.skip(
+                reason=(
+                    f"integration artifacts unavailable ({', '.join(missing)}); run "
+                    ".venv/bin/python scripts/artifacts.py for recovery instructions"
+                )
+            )
+        )

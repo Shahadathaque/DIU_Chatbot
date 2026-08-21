@@ -83,10 +83,21 @@ def _raw_check() -> ArtifactCheck:
     try:
         from scripts.validate_raw_dataset import validate_dataset
 
+        if len(manifest_paths) != 1:
+            raise ValueError(
+                "expected exactly one immutable raw run manifest; found {}".format(
+                    len(manifest_paths)
+                )
+            )
+        manifest = json.loads(manifest_paths[0].read_text(encoding="utf-8"))
+        dataset_version = manifest.get("raw_dataset_version")
+        if not isinstance(dataset_version, str) or not dataset_version.strip():
+            raise ValueError("raw run manifest has no raw_dataset_version")
+
         report = validate_dataset(
             output_root=RAW_ROOT,
             registry_path=PROJECT_ROOT / "data/source_registry.csv",
-            dataset_version="v1",
+            dataset_version=dataset_version,
         )
         if report.get("integrity_status") != "passed":
             return _invalid(
@@ -210,7 +221,7 @@ def recovery_instructions() -> list[str]:
 
     return [
         "Restore the private raw snapshot into data/raw/collection-v2-finalized.",
-        "Run: .venv/bin/python scripts/validate_raw_dataset.py --output-root data/raw/collection-v2-finalized.",
+        "Read raw_dataset_version from the run manifest, then run: .venv/bin/python scripts/validate_raw_dataset.py --output-root data/raw/collection-v2-finalized --dataset-version <version>.",
         "Build cleaned data: .venv/bin/python scripts/clean_dataset.py --raw-root data/raw/collection-v2-finalized --output-root data/cleaned/v2.",
         "Validate cleaned data: .venv/bin/python scripts/validate_clean_dataset.py --cleaned-root data/cleaned/v2 --raw-root data/raw/collection-v2-finalized.",
         "Restore the private held-out dataset into data/evaluation/questions.v1.json.",

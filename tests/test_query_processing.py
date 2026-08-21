@@ -27,6 +27,10 @@ from rag.query_processing import QueryIntent, analyze_query
         ("am i eligible for bsc in cse?", QueryIntent.ELIGIBILITY),
         ("CSE ar admission condition", QueryIntent.ELIGIBILITY),
         ("kono course er eligibility ki?", QueryIntent.ELIGIBILITY),
+        ("আমি কি CSE প্রোগ্রামে ভর্তির যোগ্য?", QueryIntent.ELIGIBILITY),
+        ("CSE er eligibility ki?", QueryIntent.ELIGIBILITY),
+        ("What are the international admission requirements?", QueryIntent.INTERNATIONAL),
+        ("DIU te scholarship ba waiver ache?", QueryIntent.WAIVER),
     ],
 )
 def test_common_query_variants_have_stable_intents(
@@ -53,8 +57,58 @@ def test_program_name_is_preserved_in_reformulation() -> None:
     assert "computer science and engineering" in analysis.retrieval_query.casefold()
 
 
+@pytest.mark.parametrize(
+    ("query", "canonical"),
+    [
+        ("Information Technology and Management tuition fees", "Information Technology & Management"),
+        ("BBA in Finance and Banking tuition fees", "BBA in Finance & Banking"),
+        ("Development Studies tuition fees", "Master of Development Studies"),
+        ("M.A. in English tuition fees", "M. A in English"),
+        (
+            "MSS in Journalism, Media & Communication tuition fees",
+            "MSS in Journalism, Media and Communication",
+        ),
+        ("M Pharm tuition fees", "Master of Pharmacy"),
+    ],
+)
+def test_specific_program_variants_survive_query_reformulation(
+    query: str, canonical: str
+) -> None:
+    analysis = analyze_query(query)
+
+    assert analysis.intent is QueryIntent.TUITION
+    assert canonical.casefold() in analysis.retrieval_query.casefold()
+
+
 def test_unrelated_question_has_no_admission_intent() -> None:
     analysis = analyze_query("What is the weather in Dhaka?")
 
     assert analysis.intent is None
     assert not analysis.is_admission_query
+
+
+def test_lowercase_banglish_particle_is_not_a_textile_program_alias() -> None:
+    analysis = analyze_query("DIU te scholarship ba waiver ache?")
+
+    assert analysis.intent is QueryIntent.WAIVER
+    assert "Textile Engineering" not in analysis.retrieval_query
+
+
+def test_uppercase_short_program_alias_remains_supported() -> None:
+    analysis = analyze_query("TE tuition fees")
+
+    assert analysis.intent is QueryIntent.TUITION
+    assert "Textile Engineering" in analysis.retrieval_query
+
+
+@pytest.mark.parametrize(
+    ("query", "language"),
+    [
+        ("আমি কি CSE প্রোগ্রামে ভর্তির যোগ্য?", "bn"),
+        ("CSE er eligibility ki?", "banglish"),
+    ],
+)
+def test_eligibility_language_variants_are_detected(
+    query: str, language: str
+) -> None:
+    assert analyze_query(query).language == language

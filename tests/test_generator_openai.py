@@ -17,6 +17,7 @@ def _settings(**overrides) -> GeneratorSettings:
         "generator_backend": "openai",
         "generator_api_base": "https://api.example.com/v1",
         "generator_api_key": "secret-key",
+        "generator_api_max_retries": 0,
         "_env_file": None,
     }
     values.update(overrides)
@@ -129,6 +130,30 @@ def test_openai_generate_network_error_raises() -> None:
     generator = OpenAICompatibleGenerator(_settings(), client=_client(handler))
     with pytest.raises(GeneratorUnavailableError):
         generator.generate([{"role": "user", "content": "hello"}])
+
+
+def test_openai_generate_retries_transient_failures_with_bounded_backoff() -> None:
+    attempts = 0
+    sleeps: list[float] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            return httpx.Response(429, headers={"Retry-After": "0.75"})
+        if attempts == 2:
+            return httpx.Response(503)
+        return httpx.Response(200, json={"choices": [{"message": {"content": "ok"}}]})
+
+    generator = OpenAICompatibleGenerator(
+        _settings(generator_api_max_retries=2, generator_api_retry_backoff=0.25),
+        client=_client(handler),
+        sleeper=sleeps.append,
+    )
+
+    assert generator.generate([{"role": "user", "content": "hello"}]) == "ok"
+    assert attempts == 3
+    assert sleeps == [0.75, 0.5]
 
 
 def test_openai_generate_unexpected_body_raises() -> None:

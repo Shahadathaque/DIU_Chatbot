@@ -352,8 +352,13 @@ class PgVectorStore:
         *,
         processed_document_ids: Optional[Collection[str]] = None,
         rebuild: bool = False,
+        replace_all: bool = False,
     ) -> IndexReport:
-        """Upsert chunks atomically and delete stale rows only for selected docs."""
+        """Upsert chunks atomically and delete stale rows after validation.
+
+        ``replace_all`` is reserved for a complete, non-empty candidate snapshot.
+        It removes rows absent from that snapshot inside the same transaction.
+        """
 
         prepared = _prepare_batch(
             chunks,
@@ -363,16 +368,12 @@ class PgVectorStore:
         )
         if not rebuild:
             self._ensure_setup()
+        if replace_all and not prepared.entries:
+            raise ValueError("refusing to replace the index with an empty snapshot")
 
         psycopg, sql, dict_row, Jsonb, Vector, register_vector = (
             _load_pg_dependencies()
         )
-        table = sql.Identifier(self.table_name)
-        incoming_ids = [chunk.chunk_id for chunk, _embedding in prepared.entries]
-        existing_ids: Set[str] = set()
-        inserted = 0
-        updated = 0
-        deleted = 0
         try:
             with self._connection(psycopg, dict_row) as connection:
                 if rebuild:
@@ -384,65 +385,14 @@ class PgVectorStore:
                     )
                 else:
                     register_vector(connection)
-                with connection.cursor() as cursor:
-                    if incoming_ids:
-                        cursor.execute(
-                            sql.SQL(
-                                "SELECT chunk_id FROM {} WHERE chunk_id = ANY(%s)"
-                            ).format(table),
-                            (incoming_ids,),
-                        )
-                        existing_ids = {row["chunk_id"] for row in cursor.fetchall()}
-
-                    statement = self._upsert_statement(sql, table)
-                    for chunk, embedding in prepared.entries:
-                        values = _chunk_values(chunk)
-                        values.extend(
-                            [
-                                self.embedding_model_name,
-                                self.embedding_model_revision,
-                                self.embedding_dimension,
-                                Vector(embedding),
-                            ]
-                        )
-                        values[_CHUNK_FIELDS.index("quality_flags")] = Jsonb(
-                            list(chunk.quality_flags)
-                        )
-                        cursor.execute(statement, values)
-                        changed = cursor.fetchone()
-                        if changed is None:
-                            continue
-                        if chunk.chunk_id in existing_ids:
-                            updated += 1
-                        else:
-                            inserted += 1
-
-                    if prepared.processed_document_ids:
-                        if incoming_ids:
-                            cursor.execute(
-                                sql.SQL(
-                                    """
-                                    DELETE FROM {}
-                                    WHERE document_id = ANY(%s)
-                                      AND NOT (chunk_id = ANY(%s))
-                                    """
-                                ).format(table),
-                                (
-                                    list(prepared.processed_document_ids),
-                                    incoming_ids,
-                                ),
-                            )
-                        else:
-                            cursor.execute(
-                                sql.SQL(
-                                    "DELETE FROM {} WHERE document_id = ANY(%s)"
-                                ).format(table),
-                                (list(prepared.processed_document_ids),),
-                            )
-                        deleted = cursor.rowcount
-
-                    cursor.execute(sql.SQL("SELECT COUNT(*) AS count FROM {}").format(table))
-                    total = int(cursor.fetchone()["count"])
+                report = self.upsert_chunks_on_connection(
+                    connection,
+                    chunks=chunks,
+                    embeddings=embeddings,
+                    processed_document_ids=processed_document_ids,
+                    replace_all=replace_all,
+                    dependencies=(sql, Jsonb, Vector),
+                )
             self._ready = True
         except VectorStoreError:
             raise
@@ -450,6 +400,101 @@ class PgVectorStore:
             raise VectorStoreError(
                 "Could not update PostgreSQL/pgvector chunks: {}".format(error)
             ) from error
+
+        return report
+
+    def upsert_chunks_on_connection(
+        self,
+        connection: Any,
+        *,
+        chunks: Sequence[KnowledgeChunk],
+        embeddings: Sequence[Sequence[float]],
+        processed_document_ids: Optional[Collection[str]] = None,
+        replace_all: bool = False,
+        dependencies: Optional[Tuple[Any, Any, Any]] = None,
+    ) -> IndexReport:
+        """Publish chunks inside a caller-owned PostgreSQL transaction."""
+
+        prepared = _prepare_batch(
+            chunks,
+            embeddings,
+            dimension=self.embedding_dimension,
+            processed_document_ids=processed_document_ids,
+        )
+        if replace_all and not prepared.entries:
+            raise ValueError("refusing to replace the index with an empty snapshot")
+        if dependencies is None:
+            _psycopg, sql, _dict_row, Jsonb, Vector, register_vector = (
+                _load_pg_dependencies()
+            )
+            register_vector(connection)
+        else:
+            sql, Jsonb, Vector = dependencies
+        table = sql.Identifier(self.table_name)
+        incoming_ids = [chunk.chunk_id for chunk, _embedding in prepared.entries]
+        existing_ids: Set[str] = set()
+        inserted = 0
+        updated = 0
+        deleted = 0
+        with connection.cursor() as cursor:
+            if incoming_ids:
+                cursor.execute(
+                    sql.SQL("SELECT chunk_id FROM {} WHERE chunk_id = ANY(%s)").format(
+                        table
+                    ),
+                    (incoming_ids,),
+                )
+                existing_ids = {row["chunk_id"] for row in cursor.fetchall()}
+
+            statement = self._upsert_statement(sql, table)
+            for chunk, embedding in prepared.entries:
+                values = _chunk_values(chunk)
+                values.extend(
+                    [
+                        self.embedding_model_name,
+                        self.embedding_model_revision,
+                        self.embedding_dimension,
+                        Vector(embedding),
+                    ]
+                )
+                values[_CHUNK_FIELDS.index("quality_flags")] = Jsonb(
+                    list(chunk.quality_flags)
+                )
+                cursor.execute(statement, values)
+                if cursor.fetchone() is None:
+                    continue
+                if chunk.chunk_id in existing_ids:
+                    updated += 1
+                else:
+                    inserted += 1
+
+            if replace_all:
+                cursor.execute(
+                    sql.SQL("DELETE FROM {} WHERE NOT (chunk_id = ANY(%s))").format(
+                        table
+                    ),
+                    (incoming_ids,),
+                )
+                deleted = cursor.rowcount
+            elif prepared.processed_document_ids:
+                if incoming_ids:
+                    cursor.execute(
+                        sql.SQL(
+                            "DELETE FROM {} WHERE document_id = ANY(%s) "
+                            "AND NOT (chunk_id = ANY(%s))"
+                        ).format(table),
+                        (list(prepared.processed_document_ids), incoming_ids),
+                    )
+                else:
+                    cursor.execute(
+                        sql.SQL("DELETE FROM {} WHERE document_id = ANY(%s)").format(
+                            table
+                        ),
+                        (list(prepared.processed_document_ids),),
+                    )
+                deleted = cursor.rowcount
+            cursor.execute(sql.SQL("SELECT COUNT(*) AS count FROM {}").format(table))
+            total = int(cursor.fetchone()["count"])
 
         return IndexReport(
             received_chunks=len(prepared.entries),
@@ -459,6 +504,40 @@ class PgVectorStore:
             total_chunks=total,
             processed_documents=len(prepared.processed_document_ids),
         )
+
+    def embedding_inventory(self) -> Dict[str, Tuple[str, List[float]]]:
+        """Return reusable vectors keyed by stable chunk ID and content hash."""
+
+        self._ensure_setup()
+        psycopg, sql, dict_row, _jsonb, _vector, register_vector = (
+            _load_pg_dependencies()
+        )
+        table = sql.Identifier(self.table_name)
+        try:
+            with self._connection(psycopg, dict_row) as connection:
+                register_vector(connection)
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        sql.SQL(
+                            "SELECT chunk_id, content_hash, embedding FROM {}"
+                        ).format(table)
+                    )
+                    rows = cursor.fetchall()
+            return {
+                str(row["chunk_id"]): (
+                    str(row["content_hash"]),
+                    _validated_embedding(row["embedding"], self.embedding_dimension),
+                )
+                for row in rows
+            }
+        except VectorStoreError:
+            raise
+        except Exception as error:
+            raise VectorStoreError(
+                "Could not read PostgreSQL/pgvector embedding inventory: {}".format(
+                    error
+                )
+            ) from error
 
     def search(
         self,
@@ -531,6 +610,45 @@ class PgVectorStore:
             raise VectorStoreError(
                 "Could not count PostgreSQL/pgvector chunks: {}".format(error)
             ) from error
+
+    def is_ready(self) -> bool:
+        """Read-only compatibility and non-empty check for readiness probes."""
+
+        psycopg, sql, dict_row, _jsonb, _vector, _register_vector = (
+            _load_pg_dependencies()
+        )
+        try:
+            with self._connection(psycopg, dict_row) as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        sql.SQL(
+                            "SELECT schema_version, embedding_dimension, "
+                            "embedding_model_name, embedding_model_revision "
+                            "FROM {} WHERE singleton = TRUE"
+                        ).format(sql.Identifier(self.metadata_table_name))
+                    )
+                    self._validate_database_metadata(cursor.fetchone())
+                    cursor.execute(
+                        "SELECT format_type(attribute.atttypid, attribute.atttypmod) "
+                        "AS vector_type FROM pg_attribute AS attribute "
+                        "WHERE attribute.attrelid = %s::regclass "
+                        "AND attribute.attname = 'embedding' "
+                        "AND NOT attribute.attisdropped",
+                        (self.table_name,),
+                    )
+                    row = cursor.fetchone()
+                    if not row or row["vector_type"] != "vector({})".format(
+                        self.embedding_dimension
+                    ):
+                        return False
+                    cursor.execute(
+                        sql.SQL("SELECT COUNT(*) AS count FROM {}").format(
+                            sql.Identifier(self.table_name)
+                        )
+                    )
+                    return int(cursor.fetchone()["count"]) > 0
+        except Exception:
+            return False
 
     def _ensure_setup(self) -> None:
         if not self._ready:

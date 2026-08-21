@@ -13,6 +13,7 @@ from backend.core.config import get_settings
 from backend.repositories.runtime_catalog import RuntimeCatalogRepository
 from rag.config import get_rag_settings
 from rag.config import get_generator_settings
+from rag.vector_store import PgVectorStore, create_vector_store
 
 router = APIRouter(tags=["health"])
 HealthCheckStatus = Literal["ok", "not_configured", "error"]
@@ -80,7 +81,10 @@ def _check_rag_backend() -> HealthCheckStatus:
         if rag_settings.rag_vector_backend == "local":
             return "ok" if rag_settings.rag_local_store_path.is_file() else "error"
         if rag_settings.rag_vector_backend == "pgvector":
-            return "ok" if rag_settings.database_url else "not_configured"
+            if not rag_settings.database_url:
+                return "not_configured"
+            store = create_vector_store(rag_settings)
+            return "ok" if isinstance(store, PgVectorStore) and store.is_ready() else "error"
     except Exception:
         return "error"
     return "error"

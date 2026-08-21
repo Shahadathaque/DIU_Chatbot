@@ -18,7 +18,7 @@ early.
 | RAG chunking | Done — `rag/chunker.py`, integrity-checked manifest, tables + PDF pages |
 | Embeddings | Done — `intfloat/multilingual-e5-base` (768-d) via `rag/embeddings.py` |
 | Vector store | Done — pgvector (production) + JSON/in-memory (dev/test) |
-| Retrieval | **Active retrieval-quality task implemented locally** — multilingual normalization, deterministic intent detection, evidence-oriented reformulation, strongest-lane scoring, strict fact compatibility, and refusal preservation; deployment pending |
+| Retrieval | **Final audit passed locally** — centralized canonical program resolution, exact metadata precedence, UG/PG separation, deterministic structured tuition answers, unchanged global thresholds, and 50/50 catalog coverage; deployment pending |
 | Backend API | **TASK-01 done** — `/api/chat`, `/api/programs`, `/api/sources` live against the existing retriever + local KB; `/api/eligibility` was contract-only until TASK-03 |
 | LLM generation | **TASK-02 + TASK-DEMO done** — grounded Qwen generation; deterministic rendering protects tuition-table labels and SSC/HSC waiver rows from small-model unit/column errors |
 | Eligibility engine | **TASK-03 done** — `eligibility/` deterministic rule engine (R-001 program registry, R-002 diploma pathway); `POST /api/eligibility` live; returns `insufficient_information` where official evidence cannot establish eligibility |
@@ -33,7 +33,8 @@ early.
 | Vercel CORS | **TASK-11 done** — exact multi-origin parsing, credentials/preflight verification, unauthorized-origin rejection, and deployment troubleshooting documentation |
 | Frontend verification | **TASK-12 done** — Vitest, TypeScript, ESLint, production build, dependency audit, clean-install dry run, and dev-server verification |
 | Backend verification | **TASK-13 done** — offline unit suite, focused API/core/RAG/eligibility checks, coverage report, model-free validation, and isolated-environment verification |
-| Production optimization | **TASK-15 implementation complete** — hosted-generator configuration alignment, SSE chat route, static endpoint TTL caches, optional pooled PostgreSQL, liveness/readiness probes, production rate limiting, optional Sentry hook, and opt-in cross-encoder reranking. Provider deployment, secrets, and pgvector population remain operator actions. |
+| Production optimization | **Final audit passed locally** — bounded rate-limit state, exact non-credentialed CORS, real pgvector/catalog readiness checks, provider retries, and database-catalog freshness protections added. |
+| Automatic knowledge refresh | **Implemented and tested locally** — 12-hour GitHub Actions collection, isolated validation, hash-based incremental embeddings, one-transaction pgvector/catalog publication, stale-row deletion, post-checks, and rollback on failure; repository secrets and first manual workflow run remain operator actions. |
 | v2 artifact recovery | **TASK-16 done** — recollected and validated all 18 registered official sources, restored the 52-row program catalog, rebuilt 264 chunks, and populated the Neon pgvector index. |
 | Hosted deployment runtime | **TASK-18 done** — Neon-backed runtime catalogs, stable Gemini generation/768-d embeddings, isolated 264-chunk hosted pgvector index, free-tier indexing throttle, and local production verification without local artifacts/models. External deploy awaits rotated secrets and hosting-account setup. |
 
@@ -57,19 +58,19 @@ early.
 
 ### Current
 
-The active retrieval-quality task is implemented and locally verified. Common
-English, Bangla, and Banglish questions now retrieve exact official evidence
-without lowering the production thresholds; eligibility questions remain owned
-by the deterministic checker and unsupported questions still refuse. Backend,
-frontend, and real Neon retrieval checks pass. Provider synchronization and
-redeployment remain pending because the Codex approval service reported that its
-external-action usage limit was exhausted during the requested Neon rebuild.
+The final comprehensive audit is implemented and locally verified. Backend,
+frontend, cleaned/raw data, runtime catalog derivation, automatic-refresh safety,
+and real hosted pgvector retrieval checks pass. The existing public deployment is
+healthy; the audited changes have not been deployed. The private held-out research
+evaluation artifact is absent locally, so its artifact-dependent integrations are
+intentionally skipped.
 
 ### Next
 
-When external actions are available, verify/synchronize the unchanged 264-chunk
-Neon index, push the implementation, update Render's 384-token output setting,
-redeploy Render and Vercel, and run the TASK.md public regression matrix.
+Review and stage only the audited implementation files, commit deliberately, add
+the two GitHub Actions secrets, run the refresh workflow manually once, then deploy
+Render/Vercel and repeat the public regression matrix. Restore the private held-out
+evaluation dataset before running the full research experiment.
 
 ### Key gaps blocking a complete product
 1. ~~No chat endpoint — the retriever exists but is never called from the API.~~ **Resolved in TASK-01** (`/api/chat` now calls the retriever).
@@ -170,6 +171,35 @@ Deliverable: chat returns real generated answers grounded in retrieved evidence.
 
 _Every time something is changed/added/removed during execution (code, data, config,
 scope), record it here with a short reason._
+
+- **2026-08-22** - Completed the final comprehensive production-readiness audit.
+  Added bounded provider retries and rate-limit storage, exact fail-closed CORS and
+  Vercel configuration, real pgvector/runtime-catalog readiness checks, database
+  catalog freshness, dataset-version-aware artifact checks, and deterministic
+  canonical tuition-table rendering when retrieval includes supplemental evidence.
+  Implemented and documented an isolated 12-hour automatic refresh that validates
+  full snapshots, reuses unchanged embeddings, atomically publishes vectors plus
+  runtime catalogs, safely removes stale rows, verifies counts before commit, and
+  rolls back all publish failures. Regression coverage includes upstream/cleaning/
+  embedding/database/catalog failures, changes/additions/removals, idempotence, a
+  newly searchable program, and pre-commit vector-count protection. Cleaned/raw
+  validators, 50/50 tuition audit, hosted pgvector checks, frontend verification,
+  and public API smoke checks passed. The held-out evaluation artifact remains
+  absent and audited changes still require a deliberate commit and deployment.
+
+- **2026-08-21** - Replaced duplicated, overlap-prone program alias handling with
+  a shared canonical resolver for query processing and retrieval. Added normalized
+  degree variants, specificity-aware phrase selection, UG/PG compatibility,
+  category-scoped program search lanes, exact tuition-row metadata gating, known-
+  failure/ambiguity regressions, and a cleaned-table audit covering all 50 tuition
+  catalog programs without changing thresholds or fee data.
+- **2026-08-21** - Completed the authorized DIU Admission AI lab-report artifact.
+  Created a visually verified A4 PDF using the supplied DIU cover page and a
+  publication-style body containing the required abstract, keywords, gap analysis,
+  contributions, related-work comparison, algorithms and equations, methodology,
+  dataset description, experiment setup, result analysis, conclusion, and references.
+  Reported only inspected dataset statistics and executed test results; the pending
+  fine-tuned/four-system comparison is explicitly marked as not reported.
 
 - **2026-08-14** — Plan created from a full repo walkthrough (scraper, cleaning, rag,
   backend, frontend, contracts, docs). Reason: user requested a written plan before
@@ -606,3 +636,41 @@ scope), record it here with a short reason._
   returned the expected official evidence for every TASK.md phrasing variant.
   External Neon rebuild and Render/Vercel redeployment are pending because the
   Codex approval service exhausted its external-action usage limit.
+- **2026-08-22** — Final comprehensive QA and catalog-wide retrieval repair
+  completed locally. Centralized canonical program resolution now prefers the
+  longest exact catalog phrase, normalizes punctuation/degree variants, enforces
+  undergraduate/postgraduate compatibility, gives exact structured program rows
+  precedence over broad aliases, and preserves unregistered full program names
+  through a dedicated retrieval lane. Fixed embedded-alias collisions in official
+  names, the Software Engineering Data Science specialization, international
+  requirements intent precedence, and lowercase Banglish `te` being mistaken for
+  Textile Engineering; Bengali `যোগ্য` and Banglish `er ... ki` eligibility
+  wording now retain the correct intent/language. Verification passed with 466 backend tests, 26 frontend
+  tests, Python compilation, TypeScript, ESLint, and production build. Production
+  pgvector audits passed 104/104 catalog-discovery queries for 52 programs,
+  100/100 tuition queries for all 50 structured tuition rows with zero field
+  mismatches, 26/26 UG/PG cases, 14/14 intent cases, and 8/8 multilingual cases.
+  Live infrastructure is healthy, but Render is still running an older revision:
+  Development Studies and MSS JMC fail on the public chat and live CORS still
+  advertises credentials. The scheduled refresh workflow is implemented and
+  locally tested but remains untracked, absent from GitHub, without repository
+  secrets, and therefore inactive. The private held-out evaluation dataset is
+  also absent. No commit, push, production mutation, fee-data change, or threshold
+  reduction was performed.
+- **2026-08-22** — Final frontend, SEO, and production-readiness implementation
+  completed locally. Polished the existing product experience around Ask Admission
+  AI, deterministic eligibility, programs, and verified-source guidance; replaced
+  the simulated eligibility exchange; added progressive accessible chat loading
+  that ends on the first streamed token; and removed provider-facing wording from
+  public UI. Added unique canonical metadata, Open Graph/Twitter cards, WebSite and
+  WebApplication JSON-LD, dynamic robots/sitemap routes, a generated social image,
+  and seven typed, source-backed admission guides with Article/Breadcrumb JSON-LD,
+  internal links, dates, official sources, and explicit change warnings. Deferred
+  thin program detail pages until sufficient server-renderable structured evidence
+  exists. Verification: 466 backend tests passed with 41 integration tests
+  deselected; 31 frontend tests, TypeScript, ESLint, and production build passed;
+  npm reported zero vulnerabilities; all 50 cleaned tuition programs passed the
+  catalog audit; and rendered local metadata, warning, sitemap, and robots output
+  were checked. Browser visual inspection remains unavailable because no in-app or
+  extension browser is connected. Selective publication and live deployment remain
+  pending the final git review; GitHub CLI authentication is currently invalid.

@@ -1,10 +1,11 @@
-import type { Metadata } from "next";
 import { EligibilityForm } from "@/components/eligibility/eligibility-form";
+import { createPageMetadata } from "@/lib/site";
 
-export const metadata: Metadata = {
-  title: "Eligibility Checker",
-  description: "Check DIU admission eligibility through the research backend.",
-};
+export const metadata = createPageMetadata({
+  title: "DIU Admission Eligibility Checker",
+  description: "Check DIU admission eligibility using deterministic rules supported by collected official evidence.",
+  path: "/eligibility",
+});
 
 export default function EligibilityPage() {
   return <EligibilityForm />;

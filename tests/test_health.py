@@ -146,6 +146,12 @@ def test_model_endpoint_health_check_reports_http_error(monkeypatch) -> None:
 
 
 def test_rag_health_check_reports_pgvector_and_unknown_backends(monkeypatch) -> None:
+    class ReadyStore:
+        def is_ready(self):
+            return True
+
+    monkeypatch.setattr(health_api, "PgVectorStore", ReadyStore)
+    monkeypatch.setattr(health_api, "create_vector_store", lambda settings: ReadyStore())
     monkeypatch.setattr(
         health_api,
         "get_rag_settings",
@@ -165,6 +171,25 @@ def test_rag_health_check_reports_pgvector_and_unknown_backends(monkeypatch) -> 
         "get_rag_settings",
         lambda: SimpleNamespace(rag_vector_backend="other", database_url=None),
     )
+    assert health_api._check_rag_backend() == "error"
+
+
+def test_rag_health_check_rejects_incompatible_or_empty_pgvector(monkeypatch) -> None:
+    class UnreadyStore:
+        def is_ready(self):
+            return False
+
+    monkeypatch.setattr(health_api, "PgVectorStore", UnreadyStore)
+    monkeypatch.setattr(health_api, "create_vector_store", lambda settings: UnreadyStore())
+    monkeypatch.setattr(
+        health_api,
+        "get_rag_settings",
+        lambda: SimpleNamespace(
+            rag_vector_backend="pgvector",
+            database_url="postgresql://db",
+        ),
+    )
+
     assert health_api._check_rag_backend() == "error"
 
 

@@ -40,7 +40,7 @@ def test_browser_origin_receives_cors_headers() -> None:
         response.headers.get("access-control-allow-origin")
         == "http://localhost:3000"
     )
-    assert response.headers.get("access-control-allow-credentials") == "true"
+    assert response.headers.get("access-control-allow-credentials") is None
 
 
 def test_cors_preflight_for_post_allowed() -> None:

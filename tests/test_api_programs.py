@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from fastapi.testclient import TestClient
 import pytest
 
@@ -276,9 +278,11 @@ def test_official_catalog_includes_non_sit_programs_with_faculty() -> None:
 
 
 @pytest.mark.integration
+@pytest.mark.requires_artifacts("cleaned dataset")
 def test_real_cleaned_data_has_unique_and_stable_ids() -> None:
-    first = ProgramsService().list_programs()
-    second = ProgramsService().list_programs()
+    cleaned_root = Path(__file__).resolve().parents[1] / "data/cleaned/v2"
+    first = ProgramsService(cleaned_root=str(cleaned_root)).list_programs()
+    second = ProgramsService(cleaned_root=str(cleaned_root)).list_programs()
 
     assert first.programs, "expected real cleaned programs"
     ids = [p.id for p in first.programs]
@@ -290,3 +294,30 @@ def test_real_cleaned_data_has_unique_and_stable_ids() -> None:
     assert "bba" not in names
     assert "bachelor of business administration (bba)" in names
     assert any("software engineering" in name for name in names)
+
+
+def test_default_database_catalog_is_not_hidden_by_process_cache(monkeypatch) -> None:
+    from backend.core.config import get_settings
+
+    class ChangingRepository:
+        calls = 0
+
+        def list_programs(self):
+            self.calls += 1
+            return [{"id": f"p-{self.calls}", "name": f"Program {self.calls}"}]
+
+    repository = ChangingRepository()
+    monkeypatch.setattr(
+        "backend.services.programs_service.RuntimeCatalogRepository",
+        lambda _url: repository,
+    )
+    get_settings.cache_clear()
+    monkeypatch.setenv("RUNTIME_CATALOG_BACKEND", "database")
+    monkeypatch.setenv("DATABASE_URL", "postgresql://example.invalid/diu")
+
+    first = ProgramsService().list_programs()
+    second = ProgramsService().list_programs()
+
+    assert first.programs[0].id == "p-1"
+    assert second.programs[0].id == "p-2"
+    get_settings.cache_clear()

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from dataclasses import dataclass
 from typing import Any, Dict, Mapping, Optional, Sequence
 
@@ -64,6 +66,26 @@ class RuntimeCatalogRepository:
         )
         return rows[0] if rows else None
 
+    def refresh_inventory(self) -> Dict[str, Dict[str, str]]:
+        """Return non-secret hashes used for automatic change detection."""
+
+        programs = self._fetch_all(
+            "SELECT program_id AS id, name, degree, faculty, admission_url "
+            "FROM diu_runtime_programs"
+        )
+        sources = self._fetch_all(
+            "SELECT source_id AS id, title, source_url AS url, category, "
+            "content_hash FROM diu_runtime_sources"
+        )
+        return {
+            "programs": {
+                str(row["id"]): _stable_mapping_hash(row) for row in programs
+            },
+            "sources": {
+                str(row["id"]): _stable_mapping_hash(row) for row in sources
+            },
+        }
+
     def is_ready(self) -> bool:
         """Check that metadata and the expected number of catalog rows exist."""
 
@@ -98,14 +120,7 @@ class RuntimeCatalogRepository:
     ) -> None:
         """Atomically replace runtime rows with one validated snapshot."""
 
-        if not programs:
-            raise ValueError("refusing to synchronize an empty program catalog")
-        if not sources:
-            raise ValueError("refusing to synchronize an empty source catalog")
-        if metadata.program_count != len(programs):
-            raise ValueError("program metadata count does not match input rows")
-        if metadata.source_count != len(sources):
-            raise ValueError("source metadata count does not match input rows")
+        self._validate_snapshot(programs, sources, metadata)
 
         psycopg, dict_row, Jsonb = _load_psycopg()
         try:
@@ -114,75 +129,117 @@ class RuntimeCatalogRepository:
                 connect_timeout=self._connect_timeout,
                 row_factory=dict_row,
             ) as connection:
-                with connection.cursor() as cursor:
-                    self._create_schema(cursor)
-                    cursor.execute("DELETE FROM diu_runtime_programs")
-                    cursor.execute("DELETE FROM diu_runtime_sources")
-                    for row in programs:
-                        cursor.execute(
-                            """
-                            INSERT INTO diu_runtime_programs (
-                                program_id, name, degree, faculty, admission_url,
-                                source_id, source_url, retrieved_at, document_id,
-                                document_hash, content_hash, provenance
-                            ) VALUES (
-                                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
-                            )
-                            """,
-                            (
-                                row["id"], row["name"], row.get("degree"),
-                                row.get("faculty"), row.get("admission_url"),
-                                row["source_id"], row["source_url"],
-                                row.get("retrieved_at"), row["document_id"],
-                                row["document_hash"], row["content_hash"],
-                                Jsonb(dict(row.get("provenance") or {})),
-                            ),
-                        )
-                    for row in sources:
-                        cursor.execute(
-                            """
-                            INSERT INTO diu_runtime_sources (
-                                source_id, title, source_url, category,
-                                retrieved_at, document_id, document_hash,
-                                content_hash, provenance
-                            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                            """,
-                            (
-                                row["id"], row["title"], row["url"],
-                                row.get("category"), row.get("retrieved_at"),
-                                row["document_id"], row["document_hash"],
-                                row["content_hash"],
-                                Jsonb(dict(row.get("provenance") or {})),
-                            ),
-                        )
-                    cursor.execute(
-                        """
-                        INSERT INTO diu_runtime_metadata (
-                            singleton, dataset_version, dataset_fingerprint,
-                            manifest_hash, program_count, source_count, synced_at
-                        ) VALUES (TRUE, %s, %s, %s, %s, %s, NOW())
-                        ON CONFLICT (singleton) DO UPDATE SET
-                            dataset_version = EXCLUDED.dataset_version,
-                            dataset_fingerprint = EXCLUDED.dataset_fingerprint,
-                            manifest_hash = EXCLUDED.manifest_hash,
-                            program_count = EXCLUDED.program_count,
-                            source_count = EXCLUDED.source_count,
-                            synced_at = NOW()
-                        """,
-                        (
-                            metadata.dataset_version,
-                            metadata.dataset_fingerprint,
-                            metadata.manifest_hash,
-                            metadata.program_count,
-                            metadata.source_count,
-                        ),
-                    )
+                self.synchronize_on_connection(
+                    connection,
+                    programs=programs,
+                    sources=sources,
+                    metadata=metadata,
+                    jsonb_factory=Jsonb,
+                )
         except Exception as error:
             if isinstance(error, (ValueError, RuntimeCatalogError)):
                 raise
             raise RuntimeCatalogError(
                 "Could not synchronize the PostgreSQL runtime catalog"
             ) from error
+
+    def synchronize_on_connection(
+        self,
+        connection: Any,
+        *,
+        programs: Sequence[Mapping[str, Any]],
+        sources: Sequence[Mapping[str, Any]],
+        metadata: RuntimeCatalogMetadata,
+        jsonb_factory: Any = None,
+    ) -> None:
+        """Replace catalog rows inside the caller's active transaction.
+
+        This entry point lets the automatic refresh publish vector and runtime
+        catalog changes as one PostgreSQL transaction. The caller owns commit
+        and rollback.
+        """
+
+        self._validate_snapshot(programs, sources, metadata)
+        if jsonb_factory is None:
+            _psycopg, _dict_row, jsonb_factory = _load_psycopg()
+        with connection.cursor() as cursor:
+            self._create_schema(cursor)
+            cursor.execute("DELETE FROM diu_runtime_programs")
+            cursor.execute("DELETE FROM diu_runtime_sources")
+            for row in programs:
+                cursor.execute(
+                    """
+                    INSERT INTO diu_runtime_programs (
+                        program_id, name, degree, faculty, admission_url,
+                        source_id, source_url, retrieved_at, document_id,
+                        document_hash, content_hash, provenance
+                    ) VALUES (
+                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                    )
+                    """,
+                    (
+                        row["id"], row["name"], row.get("degree"),
+                        row.get("faculty"), row.get("admission_url"),
+                        row["source_id"], row["source_url"],
+                        row.get("retrieved_at"), row["document_id"],
+                        row["document_hash"], row["content_hash"],
+                        jsonb_factory(dict(row.get("provenance") or {})),
+                    ),
+                )
+            for row in sources:
+                cursor.execute(
+                    """
+                    INSERT INTO diu_runtime_sources (
+                        source_id, title, source_url, category,
+                        retrieved_at, document_id, document_hash,
+                        content_hash, provenance
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    (
+                        row["id"], row["title"], row["url"],
+                        row.get("category"), row.get("retrieved_at"),
+                        row["document_id"], row["document_hash"],
+                        row["content_hash"],
+                        jsonb_factory(dict(row.get("provenance") or {})),
+                    ),
+                )
+            cursor.execute(
+                """
+                INSERT INTO diu_runtime_metadata (
+                    singleton, dataset_version, dataset_fingerprint,
+                    manifest_hash, program_count, source_count, synced_at
+                ) VALUES (TRUE, %s, %s, %s, %s, %s, NOW())
+                ON CONFLICT (singleton) DO UPDATE SET
+                    dataset_version = EXCLUDED.dataset_version,
+                    dataset_fingerprint = EXCLUDED.dataset_fingerprint,
+                    manifest_hash = EXCLUDED.manifest_hash,
+                    program_count = EXCLUDED.program_count,
+                    source_count = EXCLUDED.source_count,
+                    synced_at = NOW()
+                """,
+                (
+                    metadata.dataset_version,
+                    metadata.dataset_fingerprint,
+                    metadata.manifest_hash,
+                    metadata.program_count,
+                    metadata.source_count,
+                ),
+            )
+
+    @staticmethod
+    def _validate_snapshot(
+        programs: Sequence[Mapping[str, Any]],
+        sources: Sequence[Mapping[str, Any]],
+        metadata: RuntimeCatalogMetadata,
+    ) -> None:
+        if not programs:
+            raise ValueError("refusing to synchronize an empty program catalog")
+        if not sources:
+            raise ValueError("refusing to synchronize an empty source catalog")
+        if metadata.program_count != len(programs):
+            raise ValueError("program metadata count does not match input rows")
+        if metadata.source_count != len(sources):
+            raise ValueError("source metadata count does not match input rows")
 
     def _fetch_all(self, query: str) -> list[Dict[str, Any]]:
         psycopg, dict_row, _jsonb = _load_psycopg()
@@ -262,6 +319,13 @@ def _load_psycopg() -> tuple[Any, Any, Any]:
             "psycopg is required for the PostgreSQL runtime catalog"
         ) from error
     return psycopg, dict_row, Jsonb
+
+
+def _stable_mapping_hash(value: Mapping[str, Any]) -> str:
+    serialized = json.dumps(
+        dict(value), ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    )
+    return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
 
 
 __all__ = [

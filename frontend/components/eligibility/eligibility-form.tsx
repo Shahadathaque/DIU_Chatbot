@@ -108,8 +108,8 @@ export function EligibilityForm() {
               Eligibility checker
             </h1>
             <p className="mt-2 text-sm leading-6 text-muted">
-              Submit your academic profile. Eligibility is determined by the research
-              backend — this form never calculates the decision in the browser.
+              Submit your academic profile. Eligibility is determined only by collected,
+              explicit rules; missing evidence is reported instead of guessed.
             </p>
           </div>
         </div>

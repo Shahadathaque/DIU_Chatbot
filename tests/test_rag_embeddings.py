@@ -152,6 +152,35 @@ def test_openai_compatible_embedder_accepts_omitted_zero_index() -> None:
     ]
 
 
+def test_openai_compatible_embedder_retries_transient_http_failures() -> None:
+    attempts = 0
+    sleeps: list[float] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            return httpx.Response(503)
+        return httpx.Response(
+            200, json={"data": [{"index": 0, "embedding": [1.0, 0.0]}]}
+        )
+
+    embedder = OpenAICompatibleEmbedder(
+        api_base="https://model.example/v1",
+        api_key=None,
+        model_name="hosted-embedding",
+        dimension=2,
+        max_retries=2,
+        retry_backoff=0.25,
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+        sleeper=sleeps.append,
+    )
+
+    assert embedder.embed_query("DIU admission") == [1.0, 0.0]
+    assert attempts == 2
+    assert sleeps == [0.25]
+
+
 def test_create_embedder_selects_hosted_backend() -> None:
     settings = RagSettings(
         _env_file=None,

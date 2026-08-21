@@ -138,9 +138,9 @@ CORS_ORIGINS=https://your-app.vercel.app,https://your-domain.com
 
 Origins must include the scheme and exact host, without a trailing slash. The
 backend allows `GET`, `POST`, and `OPTIONS`, accepts the `Content-Type` header,
-and enables credentials for authenticated browser requests. The frontend must
-use `credentials: 'include'` when it needs to send cookies; bearer tokens still
-need to be supplied in the request headers.
+and intentionally disables credentialed CORS because this public research API
+uses neither cookies nor browser authentication. The frontend therefore sends
+ordinary cross-origin requests without `credentials: 'include'`.
 
 After changing `CORS_ORIGINS`, update the environment variable on the hosting
 platform and restart/redeploy the backend. If the browser reports a CORS error,
@@ -379,6 +379,12 @@ RAG_TABLE_NAME=diu_knowledge_chunks_hosted \
 for providers with sufficient quota; a small delay such as `8` seconds avoids
 free-tier token-per-minute errors and does not slow single-query retrieval.
 
+After the one-time catalog/vector bootstrap, enable the fail-closed scheduled
+refresh described in
+[docs/backend/automatic_refresh.md](docs/backend/automatic_refresh.md). It
+checks approved DIU sources approximately every 12 hours and publishes vectors
+and runtime catalogs in one transaction.
+
 For any backend provider:
 
 1. Create an account and connect this GitHub repository.
@@ -413,7 +419,7 @@ secret manager, not in Git.
 From the deployed frontend browser console:
 
 ```javascript
-fetch('https://your-backend.example/api/health', { credentials: 'include' })
+fetch('https://your-backend.example/api/health')
   .then((response) => response.json())
   .then((data) => console.log('✅ CORS working:', data))
   .catch((error) => console.error('❌ Error:', error));

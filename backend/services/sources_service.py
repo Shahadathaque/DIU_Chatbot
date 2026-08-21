@@ -46,15 +46,16 @@ class SourcesService:
         )
 
     def list_sources(self) -> SourcesResponse:
-        if self._cache_default:
+        # Database-backed catalogs are published independently of API worker
+        # lifetimes, so they must be read through after every successful refresh.
+        use_database = self._records is None and self._use_database()
+        cache_local_snapshot = self._cache_default and not use_database
+        if cache_local_snapshot:
             cached = _SOURCES_CACHE.get()
             if cached is not None:
                 return cached
-        if self._records is None and self._use_database():
-            response = self._list_database_sources()
-            if self._cache_default:
-                _SOURCES_CACHE.set(response)
-            return response
+        if use_database:
+            return self._list_database_sources()
         records = list(self._records if self._records is not None else self._load_records())
         sources: List[SourceInfo] = []
         for record in records:
@@ -68,7 +69,7 @@ class SourcesService:
             sources.append(source)
         sources.sort(key=lambda item: (item.id.casefold(), item.id))
         response = SourcesResponse(sources=sources)
-        if self._cache_default:
+        if cache_local_snapshot:
             _SOURCES_CACHE.set(response)
         return response
 

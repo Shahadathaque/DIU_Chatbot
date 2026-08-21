@@ -11,7 +11,9 @@ from rag.retriever import (
     Retriever,
     _chunk_program_matches,
     _matched_program_phrase,
+    _named_program_markers,
     _program_level_matches,
+    _single_named_program_acronym,
     create_retriever,
     normalize_query,
 )
@@ -800,6 +802,351 @@ def test_program_specific_tuition_does_not_fall_back_to_another_program() -> Non
     results = retriever.retrieve("What about BBA? Topic: tuition fee.", top_k=5)
 
     assert results == []
+
+
+@pytest.mark.parametrize(
+    ("query", "expected_phrase"),
+    [
+        (
+            "Information Technology and Management tuition fees",
+            "Information Technology & Management",
+        ),
+        (
+            "BBA in Finance and Banking tuition fees",
+            "BBA in Finance & Banking",
+        ),
+        ("Development Studies tuition fees", "Master of Development Studies"),
+        ("MA in English tuition fees", "M. A in English"),
+        (
+            "MSS in Journalism Media and Communication tuition fees",
+            "MSS in Journalism, Media and Communication",
+        ),
+        ("M.A. in English tuition fees", "M. A in English"),
+        ("M. A. in English tuition fees", "M. A in English"),
+        ("M Pharm tuition fees", "Master of Pharmacy"),
+        ("M. Pharm. tuition fees", "Master of Pharmacy"),
+        ("Master of Pharmacy tuition fees", "Master of Pharmacy"),
+    ],
+)
+def test_specific_program_resolution_normalizes_variants_and_beats_broad_markers(
+    query: str, expected_phrase: str
+) -> None:
+    assert _matched_program_phrase(query) == expected_phrase
+    assert len(_named_program_markers(query)) == 1
+    assert _single_named_program_acronym(query) is not None
+
+
+@pytest.mark.parametrize(
+    ("query", "expected_program", "distractor_program"),
+    [
+        (
+            "Information Technology and Management tuition fees",
+            "B.Sc. in Information Technology & Management (ITM)",
+            "BBA in Management",
+        ),
+        (
+            "BBA in Finance and Banking tuition fees",
+            "BBA in Finance & Banking",
+            "Bachelor of Business Administration (BBA)",
+        ),
+        (
+            "Development Studies tuition fees",
+            "Master of Development Studies (MDS)",
+            "Bachelor of Business Administration (BBA)",
+        ),
+        (
+            "MA in English tuition fees",
+            "M. A in English",
+            "B.A. (Hons) in English",
+        ),
+        (
+            "MSS in Journalism Media and Communication tuition fees",
+            "MSS in Journalism, Media and Communication (JMC)",
+            "BSS in Journalism, Media and Communication (JMC)",
+        ),
+    ],
+)
+def test_program_specific_tuition_compatibility_beats_semantic_similarity(
+    query: str, expected_program: str, distractor_program: str
+) -> None:
+    target = replace(
+        knowledge_chunk(
+            "target-fee",
+            source_id="DIU-FEE-001",
+            content="{} | local tuition table row".format(expected_program),
+            category="tuition_and_fees",
+            program=expected_program,
+        ),
+        content_type="table",
+    )
+    distractor = replace(
+        knowledge_chunk(
+            "distractor-fee",
+            source_id="DIU-FEE-001",
+            content="{} | semantically stronger local tuition row".format(
+                distractor_program
+            ),
+            category="tuition_and_fees",
+            program=distractor_program,
+        ),
+        content_type="table",
+    )
+    vectors = {
+        target.content: _similarity_embedding(0.80),
+        distractor.content: _similarity_embedding(0.99),
+    }
+    store = _store()
+    store.upsert_chunks(
+        [target, distractor],
+        [vectors[target.content], vectors[distractor.content]],
+    )
+    retriever = Retriever(
+        _ScoringEmbedder(vectors),
+        store,
+        candidate_multiplier=10,
+        max_results_per_source=10,
+    )
+
+    results = retriever.retrieve(query, top_k=5)
+
+    assert [result.chunk.program for result in results] == [expected_program]
+
+
+def test_program_name_lane_searches_tuition_category_before_small_top_k_cutoff() -> None:
+    distractors = [
+        knowledge_chunk(
+            f"distractor-{index}",
+            content=f"Software Engineering general document {index}",
+            category="admission_overview",
+        )
+        for index in range(5)
+    ]
+    fee = replace(
+        knowledge_chunk(
+            "swe-fee",
+            source_id="DIU-FEE-001",
+            content="B. Sc. in Software Engineering (SWE) | local tuition table row",
+            category="tuition_and_fees",
+            program="B. Sc. in Software Engineering (SWE)",
+        ),
+        content_type="table",
+    )
+    store = _store()
+    store.upsert_chunks([*distractors, fee], [[1.0, 0.0]] * 6)
+    retriever = Retriever(
+        FakeEmbedder(),
+        store,
+        candidate_multiplier=1,
+        max_results_per_source=10,
+    )
+
+    results = retriever.retrieve("SWE tuition fees", top_k=1)
+
+    assert [result.chunk.chunk_id for result in results] == ["swe-fee"]
+
+
+def test_specific_full_name_gets_raw_lane_even_when_broad_alias_matches() -> None:
+    target_program = "B.Sc. in Software Engineering (Major in Data Science)"
+    target = replace(
+        knowledge_chunk(
+            "swe-data-science-fee",
+            source_id="DIU-FEE-001",
+            content=f"{target_program} | local tuition row",
+            category="tuition_and_fees",
+            program=target_program,
+        ),
+        content_type="table",
+    )
+    base = replace(
+        knowledge_chunk(
+            "swe-base-fee",
+            source_id="DIU-FEE-001",
+            content="B. Sc. in Software Engineering (SWE) | local tuition row",
+            category="tuition_and_fees",
+            program="B. Sc. in Software Engineering (SWE)",
+        ),
+        content_type="table",
+    )
+
+    class QueryAwareEmbedder(FakeEmbedder):
+        def embed_query(self, query: str) -> List[float]:
+            self.queries.append(query)
+            if "major in data science" in normalize_query(query):
+                return [0.0, 1.0]
+            return [1.0, 0.0]
+
+    store = _store()
+    store.upsert_chunks([target, base], [[0.0, 1.0], [1.0, 0.0]])
+    embedder = QueryAwareEmbedder()
+    retriever = Retriever(
+        embedder,
+        store,
+        candidate_multiplier=1,
+        max_results_per_source=10,
+    )
+
+    results = retriever.retrieve(
+        "B.Sc. in Software Engineering (Major in Data Science) tuition fees",
+        top_k=1,
+    )
+
+    assert [result.chunk.program for result in results] == [target_program]
+    assert any("major in data science" in query for query in embedder.queries)
+
+
+def test_exact_catalog_compatibility_can_select_base_program_below_semantic_threshold() -> None:
+    base = replace(
+        knowledge_chunk(
+            "swe-base-fee",
+            source_id="DIU-FEE-001",
+            content="B. Sc. in Software Engineering (SWE) | local tuition table row",
+            category="tuition_and_fees",
+            program="B. Sc. in Software Engineering (SWE)",
+        ),
+        content_type="table",
+    )
+    specialization = replace(
+        knowledge_chunk(
+            "swe-data-fee",
+            source_id="DIU-FEE-001",
+            content="B.Sc. in Software Engineering (Major in Data Science) | local tuition row",
+            category="tuition_and_fees",
+            program="B.Sc. in Software Engineering (Major in Data Science)",
+        ),
+        content_type="table",
+    )
+    vectors = {
+        base.content: _similarity_embedding(0.70),
+        specialization.content: _similarity_embedding(0.99),
+    }
+    store = _store()
+    store.upsert_chunks(
+        [base, specialization],
+        [vectors[base.content], vectors[specialization.content]],
+    )
+    retriever = Retriever(
+        _ScoringEmbedder(vectors),
+        store,
+        candidate_multiplier=10,
+        max_results_per_source=10,
+    )
+
+    results = retriever.retrieve("SWE tuition fees", top_k=1)
+
+    assert [result.chunk.chunk_id for result in results] == ["swe-base-fee"]
+
+
+@pytest.mark.parametrize(
+    ("query", "target_program", "alias_distractor"),
+    [
+        (
+            "DIU-BCU Dual Award (MPH), UK admission program details",
+            "DIU-BCU Dual Award (MPH), UK",
+            "Master of Public Health (MPH)",
+        ),
+        (
+            "Postgraduate Diploma of Teaching in Digital Education admission program details",
+            "Postgraduate Diploma of Teaching in Digital Education",
+            "Master of Teaching in Digital Education",
+        ),
+    ],
+)
+def test_exact_catalog_name_beats_alias_embedded_inside_official_name(
+    query: str,
+    target_program: str,
+    alias_distractor: str,
+) -> None:
+    target = replace(
+        knowledge_chunk(
+            "exact-catalog-target",
+            source_id="DIU-PROG-001",
+            content=f"{target_program} | Graduate Studies",
+            category="undergraduate_programs",
+            program=target_program,
+        ),
+        content_type="table",
+        faculty="Graduate Studies",
+    )
+    distractor = replace(
+        knowledge_chunk(
+            "embedded-alias-distractor",
+            source_id="DIU-PROG-001",
+            content=f"{alias_distractor} | Health and Life Sciences",
+            category="undergraduate_programs",
+            program=alias_distractor,
+        ),
+        content_type="table",
+        faculty="Health and Life Sciences",
+    )
+    vectors = {
+        target.content: _similarity_embedding(0.70),
+        distractor.content: _similarity_embedding(0.99),
+    }
+    store = _store()
+    store.upsert_chunks(
+        [target, distractor],
+        [vectors[target.content], vectors[distractor.content]],
+    )
+    retriever = Retriever(
+        _ScoringEmbedder(vectors),
+        store,
+        candidate_multiplier=10,
+        max_results_per_source=10,
+    )
+
+    results = retriever.retrieve(query, top_k=1)
+
+    assert [result.chunk.program for result in results] == [target_program]
+
+
+@pytest.mark.parametrize(
+    ("query", "expected_program", "rejected_program"),
+    [
+        ("English tuition fees", "B.A. (Hons) in English", "M. A in English"),
+        ("MA in English tuition fees", "M. A in English", "B.A. (Hons) in English"),
+        (
+            "JMC tuition fees",
+            "BSS in Journalism, Media and Communication (JMC)",
+            "MSS in Journalism, Media and Communication (JMC)",
+        ),
+        (
+            "MSS in Journalism Media and Communication tuition fees",
+            "MSS in Journalism, Media and Communication (JMC)",
+            "BSS in Journalism, Media and Communication (JMC)",
+        ),
+        (
+            "Public Health tuition fees",
+            "Bachelor of Public Health (BPH)",
+            "Master of Public Health (MPH)",
+        ),
+        (
+            "Master of Public Health tuition fees",
+            "Master of Public Health (MPH)",
+            "Bachelor of Public Health (BPH)",
+        ),
+        (
+            "Pharmacy tuition fees",
+            "Bachelor of Pharmacy (B. Pharm)",
+            "Master of Pharmacy (M. Pharm.)",
+        ),
+        (
+            "M. Pharm. tuition fees",
+            "Master of Pharmacy (M. Pharm.)",
+            "Bachelor of Pharmacy (B. Pharm)",
+        ),
+    ],
+)
+def test_explicit_degree_level_never_falls_back_across_undergraduate_and_postgraduate(
+    query: str, expected_program: str, rejected_program: str
+) -> None:
+    marker = _single_named_program_acronym(query)
+    assert marker is not None
+    assert _chunk_program_matches(expected_program, marker)
+    assert _program_level_matches(query, expected_program, marker)
+    assert not (
+        _chunk_program_matches(rejected_program, marker)
+        and _program_level_matches(query, rejected_program, marker)
+    )
 
 
 def test_llb_admission_gpa_does_not_use_waiver_maintenance_gpa() -> None:

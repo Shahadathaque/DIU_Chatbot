@@ -13,6 +13,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Optional
 
+from rag.program_resolution import matched_program_phrase
+
 
 _SPACE_RE = re.compile(r"\s+")
 
@@ -43,35 +45,6 @@ class QueryAnalysis:
     is_admission_query: bool
 
 
-_PROGRAM_ALIASES = (
-    (re.compile(r"(?<![a-z0-9])cse(?![a-z0-9])", re.I), "Computer Science and Engineering"),
-    (re.compile(r"\bcomputer\s+science(?:\s+and\s+engineering)?\b", re.I), "Computer Science and Engineering"),
-    (re.compile(r"(?<![a-z0-9])bba(?![a-z0-9])", re.I), "Bachelor of Business Administration"),
-    (re.compile(r"(?<![a-z0-9])swe(?![a-z0-9])", re.I), "Software Engineering"),
-    (re.compile(r"(?<![a-z0-9])eee(?![a-z0-9])", re.I), "Electrical and Electronic Engineering"),
-    (re.compile(r"(?<![a-z0-9])llb(?![a-z0-9])|\blaw\b", re.I), "LL.B."),
-    (
-        re.compile(r"\benglish(?:\s+department)?\b", re.I),
-        "B.A. (Hons) in English",
-    ),
-    (
-        re.compile(
-            r"\btourism\s+(?:and|&)\s+hospitality\s+management\b",
-            re.I,
-        ),
-        "Tourism & Hospitality Management",
-    ),
-    (
-        re.compile(
-            r"\bjournalism\s*,?\s*media\s+(?:and|&)\s+communication\b",
-            re.I,
-        ),
-        "Journalism, Media and Communication",
-    ),
-    (re.compile(r"\bpharmacy\b|ফার্মেসি", re.I), "Bachelor of Pharmacy"),
-    (re.compile(r"\btextile\b|টেক্সটাইল", re.I), "Textile Engineering"),
-)
-
 _UNSUPPORTED_PATTERN = re.compile(
     r"(?i)(?:\b(?:my|personal)\s+(?:application|admission)\s+status\b|"
     r"\binsurance\s+documents?\b|"
@@ -94,7 +67,7 @@ _APPLY_PATTERN = re.compile(
 )
 _ELIGIBILITY_PATTERN = re.compile(
     r"(?i)(?:\b(?:eligible|eligibility|admission\s+condition|admission\s+criteria|"
-    r"joggota|jogyota|condition)\b|যোগ্যতা|ভর্তির\s+যোগ্যতা)"
+    r"joggota|jogyota|condition)\b|যোগ্য(?:তা)?|ভর্তির\s+যোগ্য(?:তা)?)"
 )
 _TUITION_PATTERN = re.compile(
     r"(?i)(?:\b(?:tuition|fees?|cost|payable|total\s+fee|admission\s+fee)\b|"
@@ -156,15 +129,17 @@ def _normalize(query: str) -> str:
 def _language(query: str) -> str:
     if re.search(r"[\u0980-\u09ff]", query):
         return "bn"
-    if re.search(r"(?i)\b(?:vorti|bhorti|kivabe|korbo|lagbe|koto|joggota|jogyota|kono|ache|ar)\b", query):
+    if re.search(
+        r"(?i)\b(?:vorti|bhorti|kivabe|korbo|lagbe|koto|joggota|jogyota|"
+        r"kono|ache|ar|ami|ki|er|jonno)\b",
+        query,
+    ):
         return "banglish"
     return "en"
 
 
 def _program_phrase(query: str) -> Optional[str]:
-    matches = [phrase for pattern, phrase in _PROGRAM_ALIASES if pattern.search(query)]
-    unique = list(dict.fromkeys(matches))
-    return unique[0] if len(unique) == 1 else None
+    return matched_program_phrase(query)
 
 
 def _intent(query: str, program_phrase: Optional[str]) -> Optional[QueryIntent]:
@@ -178,6 +153,8 @@ def _intent(query: str, program_phrase: Optional[str]) -> Optional[QueryIntent]:
         return QueryIntent.TUITION
     if _ELIGIBILITY_PATTERN.search(query) or (program_phrase and _REQUIREMENT_PATTERN.search(query)):
         return QueryIntent.ELIGIBILITY
+    if _INTERNATIONAL_PATTERN.search(query):
+        return QueryIntent.INTERNATIONAL
     if _DOCUMENT_PATTERN.search(query) or (_REQUIREMENT_PATTERN.search(query) and not program_phrase):
         return QueryIntent.DOCUMENTS
     if _APPLY_PATTERN.search(query):
@@ -186,8 +163,6 @@ def _intent(query: str, program_phrase: Optional[str]) -> Optional[QueryIntent]:
         return QueryIntent.DEADLINE
     if _CONTACT_PATTERN.search(query):
         return QueryIntent.CONTACT
-    if _INTERNATIONAL_PATTERN.search(query):
-        return QueryIntent.INTERNATIONAL
     if _PROGRAM_LIST_PATTERN.search(query):
         return QueryIntent.PROGRAM_CATALOG
     if program_phrase or _PROGRAM_WORD_PATTERN.search(query):

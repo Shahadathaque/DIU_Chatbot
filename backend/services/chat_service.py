@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional, Sequence
 from backend.core.errors import ApiError
 from backend.models.chat import ChatResponse, ChatSource, Confidence, Language
 from rag.generator import Generator, GeneratorUnavailableError
+from rag.program_resolution import program_phrase_matches
 from rag.retriever import Retriever, _matched_program_phrase
 from rag.query_processing import QueryIntent, analyze_query
 
@@ -395,12 +396,32 @@ def _structured_response(
         scholarship_response = _scholarship_list_response(language, results)
         if scholarship_response is not None:
             return scholarship_response
-    if topic != "tuition fee" or len(results) != 1:
+    if topic != "tuition fee":
         return None
-    result = results[0]
+
+    program_phrase = _matched_program_phrase(message)
+    table_results = [
+        result
+        for result in results
+        if result.chunk.content_type.casefold() == "table"
+        and (
+            program_phrase is None
+            or (
+                result.chunk.program
+                and program_phrase_matches(
+                    str(result.chunk.program), program_phrase
+                )
+            )
+        )
+    ]
+    # Without an explicitly resolved program, multiple fee rows remain
+    # ambiguous and must still be handled by the grounded generator.  With an
+    # explicit program, canonical compatibility is stronger evidence than the
+    # number of supplemental results returned by semantic retrieval.
+    if not table_results or (program_phrase is None and len(table_results) != 1):
+        return None
+    result = table_results[0]
     chunk = result.chunk
-    if chunk.content_type.casefold() != "table":
-        return None
     row = _table_row(chunk.content)
     if row is None:
         return None

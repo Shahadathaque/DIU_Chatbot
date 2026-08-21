@@ -11,6 +11,19 @@ from typing import Any, Iterable, List, Optional, Sequence
 from rag.config import RagSettings, get_rag_settings
 from rag.embeddings import Embedder, create_embedder
 from rag.models import KnowledgeChunk, SearchFilters, SearchResult, VectorMatch
+from rag.program_resolution import (
+    PROGRAM_BY_MARKER,
+    best_compatible_catalog_program,
+    catalog_program_phrase,
+    chunk_program_matches,
+    matched_program_phrase,
+    named_program_markers,
+    normalize_program_text,
+    program_level_matches,
+    program_phrase_matches,
+    program_search_phrase,
+    single_named_program_marker,
+)
 from rag.query_processing import QueryIntent, analyze_query
 from rag.vector_store import VectorStore, create_vector_store
 
@@ -52,52 +65,6 @@ _DOMAIN_TERM_PATTERN = re.compile(
     r"vorti|bhorti)\b|ভর্তি|আবেদন|ডকুমেন্ট|কাগজপত্র|কাগজ|টিউশন|ফি|খরচ|"
     r"বৃত্তি|স্কলারশিপ|ওয়েভার|ওয়েভার|প্রোগ্রাম|কোর্স|যোগাযোগ)"
 )
-_PROGRAM_QUERY_MARKERS = {
-    "cse": "Computer Science and Engineering",
-    "swe": "Software Engineering",
-    "cis": "Computing and Information System",
-    "itm": "Information Technology & Management",
-    "mct": "Multimedia & Creative Technology",
-    "rme": "Robotics and Mechatronics Engineering",
-    "bba": "Bachelor of Business Administration",
-    "llb": "LL.B.",
-    "llm": "LL.M.",
-    "mba": "Master of Business Administration",
-    "mds": "Master of Development Studies",
-    "mph": "Master of Public Health",
-    "bph": "Bachelor of Public Health",
-    "bss": "BSS",
-    "mss": "MSS",
-    "barch": "Bachelor of Architecture",
-    "ce": "Civil Engineering",
-    "civil": "Civil Engineering",
-    "eee": "Electrical and Electronic Engineering",
-    "ice": "Information & Communication Engineering",
-    "jmc": "Journalism, Media and Communication",
-    "english": "B.A. (Hons) in English",
-    "thm": "Tourism & Hospitality Management",
-    "ags": "Agricultural Science",
-    "esdm": "Environmental Science and Disaster Management",
-    "pess": "Physical Education and Sports Science",
-    "nfe": "Nutrition and Food Engineering",
-    "bre": "Real Estate",
-    "law": "LL.B.",
-    "pharmacy": "Bachelor of Pharmacy",
-    "textile": "Textile Engineering",
-    "architecture": "Bachelor of Architecture",
-    "agricultural": "Agricultural Science",
-    "tourism": "Tourism & Hospitality Management",
-    "accounting": "BBA in Accounting",
-    "marketing": "BBA in Marketing",
-    "finance": "BBA in Finance & Banking",
-    "banking": "BBA in Finance & Banking",
-    "management": "BBA in Management",
-    "entrepreneurship": "Bachelor of Entrepreneurship",
-    "বিবিএ": "Bachelor of Business Administration",
-    "আইন": "LL.B.",
-    "ফার্মেসি": "Bachelor of Pharmacy",
-    "টেক্সটাইল": "Textile Engineering",
-}
 _PROGRAM_LIST_PATTERN = re.compile(
     r"(?i)(?:"
     r"\b(?:what|which)\b(?!\s+faculty\b).*\b(?:programs?|courses?|degrees?)\b"
@@ -136,37 +103,10 @@ _ADMISSION_PROCESS_PATTERN = re.compile(
 )
 _PROGRAM_CATALOG_QUERY = "the complete DIU program catalog across all faculties"
 _PROGRAM_MISMATCH_PENALTY = -0.50
-_DEFAULT_POSTGRADUATE_PROGRAM_MARKERS = {"llm", "mba", "mds", "mph", "mss"}
-
-
-
 def _matched_program_phrase(query: str) -> Optional[str]:
     """Return the official program phrase named by a program-related query."""
 
-    lowered = unicodedata.normalize("NFKC", query).casefold()
-
-    if re.search(
-        r"\btourism\s+(?:and|&)\s+hospitality\s+management\b",
-        lowered,
-    ):
-        return "Tourism & Hospitality Management"
-
-    if re.search(
-        r"\bjournalism\s*,?\s*media\s+(?:and|&)\s+communication\b",
-        lowered,
-    ):
-        return "Journalism, Media and Communication"
-
-    if re.search(
-        r"\b(?:b\.?\s*a\.?\s*\(hons\)\s+in\s+)?"
-        r"english(?:\s+department)?\b",
-        lowered,
-    ):
-        return "B.A. (Hons) in English"
-
-    matches = _named_program_markers(query)
-    return _PROGRAM_QUERY_MARKERS[matches[0]] if len(matches) == 1 else None
-
+    return matched_program_phrase(query)
 
 def _named_program_acronyms(query: str) -> List[str]:
     """Return every program acronym the query explicitly names."""
@@ -177,56 +117,19 @@ def _named_program_acronyms(query: str) -> List[str]:
 def _named_program_markers(query: str) -> List[str]:
     """Prefer exact catalog phrases over broader acronym/keyword matches."""
 
-    lowered = unicodedata.normalize("NFKC", query).casefold()
-    exact: List[str] = []
-    marker_only: List[str] = []
-    exact_phrases: set[str] = set()
-    marker_phrases: set[str] = set()
-
-    for acronym, official_phrase in _PROGRAM_QUERY_MARKERS.items():
-        phrase = official_phrase.casefold()
-
-        if phrase in lowered:
-            if phrase not in exact_phrases:
-                exact.append(acronym)
-                exact_phrases.add(phrase)
-
-        elif _contains_ascii_token(lowered, acronym) and phrase not in marker_phrases:
-            marker_only.append(acronym)
-            marker_phrases.add(phrase)
-
-    return exact if exact else marker_only
+    return named_program_markers(query)
 
 
 def _single_named_program_acronym(query: str) -> Optional[str]:
     """Return the sole named program acronym, or None when none/multiple."""
 
-    found = _named_program_acronyms(query)
-    return found[0] if len(found) == 1 else None
+    return single_named_program_marker(query)
 
 
 def _chunk_program_matches(program: str, acronym: str) -> bool:
     """Return whether a chunk's program metadata belongs to the named acronym."""
 
-    folded = program.casefold()
-    phrase = _PROGRAM_QUERY_MARKERS[acronym].casefold()
-
-    if phrase and phrase in folded:
-        return True
-
-    if acronym == "bba":
-        return folded.strip(" .") == "bba"
-
-    if _contains_ascii_token(folded, acronym):
-        return True
-
-    return bool(
-        re.search(
-            r"\(\s*" + re.escape(acronym) + r"\s*\)",
-            folded,
-            re.IGNORECASE,
-        )
-    )
+    return chunk_program_matches(program, acronym)
 
 
 def normalize_query(query: str) -> str:
@@ -388,6 +291,49 @@ class Retriever:
             )
         else:
             candidates = authoritative_candidates
+        program_lane_category = category or _program_lane_category(
+            analysis.intent, intent_query
+        )
+        # The intent-oriented query intentionally removes conversational noise,
+        # but an additional raw-name lane preserves full catalog names that do
+        # not require a manually maintained alias.
+        raw_program_phrase = program_search_phrase(intent_query)
+        named_marker = _single_named_program_acronym(intent_query)
+        raw_is_known_alias = bool(
+            raw_program_phrase
+            and named_marker
+            and any(
+                normalize_program_text(raw_program_phrase)
+                == normalize_program_text(alias)
+                for alias in (
+                    *PROGRAM_BY_MARKER[named_marker].aliases,
+                    PROGRAM_BY_MARKER[named_marker].canonical,
+                )
+            )
+        )
+        if (
+            not program_list_query
+            and analysis.intent
+            in {
+                QueryIntent.TUITION,
+                QueryIntent.PROGRAM_INFO,
+                QueryIntent.ELIGIBILITY,
+                QueryIntent.WAIVER,
+            }
+            and raw_program_phrase
+            and raw_program_phrase.casefold() != normalized.casefold()
+            and (
+                program_phrase is None
+                or not raw_is_known_alias
+            )
+        ):
+            raw_embedding = self.embedder.embed_query(raw_program_phrase)
+            raw_candidates = self.vector_store.search(
+                raw_embedding,
+                top_k=candidate_limit,
+                filters=SearchFilters(category=program_lane_category, program=program),
+            )
+            candidates = self._merge_candidates(raw_candidates, candidates)
         # Keep the program resolved from the user's wording. Canonical intent
         # text may omit it for document/application intents, but the dedicated
         # program lane must still remain available for precise evidence.
@@ -399,9 +345,30 @@ class Retriever:
             program_candidates = self.vector_store.search(
                 phrase_embedding,
                 top_k=candidate_limit,
-                filters=SearchFilters(category=category, program=program),
+                filters=SearchFilters(category=program_lane_category, program=program),
             )
             candidates = self._merge_candidates(program_candidates, candidates)
+        resolved_catalog_program: Optional[str] = None
+        if not program_list_query:
+            catalog_programs = [
+                str(match.chunk.program)
+                for match in candidates
+                if match.chunk.program
+            ]
+            exact_catalog_program = catalog_program_phrase(
+                intent_query,
+                catalog_programs,
+            )
+            if exact_catalog_program is not None:
+                program_phrase = exact_catalog_program
+                resolved_catalog_program = exact_catalog_program
+            elif program_phrase is not None:
+                compatible_catalog_program = best_compatible_catalog_program(
+                    intent_query, program_phrase, catalog_programs
+                )
+                if compatible_catalog_program is not None:
+                    program_phrase = compatible_catalog_program
+                    resolved_catalog_program = compatible_catalog_program
         named_faculty = None
         if program_list_query:
             faculty_focus = _catalog_faculty_focus(intent_query)
@@ -438,7 +405,13 @@ class Retriever:
         candidates = [
             match
             for match in candidates
-            if _evidence_matches_query_context(intent_query, match.chunk)
+            if _evidence_matches_query_context(
+                intent_query,
+                match.chunk,
+                program_phrase=(
+                    None if program_phrase == _PROGRAM_CATALOG_QUERY else program_phrase
+                ),
+            )
         ]
         ranked = [
             self._rerank(normalized, match, intent_query=intent_query)
@@ -476,7 +449,11 @@ class Retriever:
         return self._suppress_duplicates(
             ranked,
             top_k=top_k,
-            similarity_threshold=-1.0 if program_list_query else similarity_threshold,
+            similarity_threshold=(
+                -1.0
+                if program_list_query or resolved_catalog_program is not None
+                else similarity_threshold
+            ),
             relevance_threshold=-1.0 if program_list_query else relevance_threshold,
             preferred_categories=set(self._topic_category_bonuses(intent_query)),
             program_list_query=program_list_query,
@@ -566,7 +543,14 @@ class Retriever:
         program = getattr(chunk, "program", None)
         if not program:
             return 0.0
-        if _chunk_program_matches(str(program), acronym):
+        program_name = str(program)
+        # A complete catalog name is stronger evidence than an alias embedded
+        # inside it. For example, "DIU-BCU Dual Award (MPH), UK" is an exact
+        # catalog program, not the generic Master of Public Health row merely
+        # because its official name contains the token MPH.
+        if catalog_program_phrase(query, [program_name]) == program_name:
+            return 0.0
+        if _chunk_program_matches(program_name, acronym):
             return 0.0
         return _PROGRAM_MISMATCH_PENALTY
 
@@ -672,23 +656,16 @@ class Retriever:
             and re.search(r"\bprograms?|courses?|degrees?\b", lowered)
         ):
             bonus += 0.045
-        for acronym, official_phrase in _PROGRAM_QUERY_MARKERS.items():
-            if not _contains_ascii_token(lowered, acronym):
-                if official_phrase.casefold() not in lowered:
-                    continue
-            if official_phrase.casefold() not in program:
-                continue
+        marker = _single_named_program_acronym(query)
+        if marker is not None:
+            if not _chunk_program_matches(program, marker):
+                return bonus
             bonus += 0.035
-            asks_for_master = bool(
-                re.search(r"\b(?:masters?|m\.?\s*sc\.?|postgraduate)\b", lowered)
-            )
-            is_master = bool(re.match(r"m\.?\s*sc", program))
-            is_bachelor = bool(re.match(r"b\.?\s*sc", program))
-            if asks_for_master and is_master:
+            expected_level_matches = _program_level_matches(query, program, marker)
+            if expected_level_matches and PROGRAM_BY_MARKER[marker].default_level == "postgraduate":
                 bonus += 0.030
-            elif not asks_for_master and is_bachelor:
+            elif expected_level_matches:
                 bonus += 0.025
-            break
         if (
             str(getattr(chunk, "content_type", "")).casefold() == "table"
             and _STRUCTURED_DATA_PATTERN.search(lowered)
@@ -870,7 +847,12 @@ def _is_engineering_faculty_chunk(chunk: object) -> bool:
     )
 
 
-def _evidence_matches_query_context(query: str, chunk: KnowledgeChunk) -> bool:
+def _evidence_matches_query_context(
+    query: str,
+    chunk: KnowledgeChunk,
+    *,
+    program_phrase: Optional[str] = None,
+) -> bool:
     """Reject evidence that cannot answer the query's explicit fact and program.
 
     Dense similarity alone cannot distinguish near-identical fee rows or an
@@ -883,6 +865,17 @@ def _evidence_matches_query_context(query: str, chunk: KnowledgeChunk) -> bool:
     intent = _fact_intent(query)
     acronym = _single_named_program_acronym(query)
 
+    def program_matches(program: str) -> bool:
+        if program_phrase is not None:
+            if not program_phrase_matches(program, program_phrase):
+                return False
+            return _program_level_matches(query, program, acronym or "")
+        if acronym is None:
+            return True
+        return _chunk_program_matches(program, acronym) and _program_level_matches(
+            query, program, acronym
+        )
+
     if intent == "tuition":
         if _INTERNATIONAL_CURRENCY_PATTERN.search(query):
             if category != "international_admission":
@@ -891,28 +884,28 @@ def _evidence_matches_query_context(query: str, chunk: KnowledgeChunk) -> bool:
             return False
         if _LOCAL_CURRENCY_PATTERN.search(query) and "$" in chunk.content:
             return False
-        if acronym is not None:
+        if program_phrase is not None or acronym is not None:
             program = str(chunk.program or "")
-            return bool(program) and _chunk_program_matches(
-                program, acronym
-            ) and _program_level_matches(query, program, acronym)
+            return bool(program) and program_matches(program)
         return True
 
     if intent == "admission_gpa" and acronym is not None:
         if category != "program_specific_admission":
             return False
         program = str(chunk.program or "")
-        return bool(program) and _chunk_program_matches(program, acronym)
+        return bool(program) and program_matches(program)
 
     if intent == "waiver":
         if category != "waivers":
             return False
-        if acronym is None:
+        if acronym is None and program_phrase is None:
             return True
         if _GPA_QUERY_PATTERN.search(query) and chunk.content_type.casefold() != "table":
             return False
         if chunk.program:
-            return _chunk_program_matches(str(chunk.program), acronym)
+            return program_matches(str(chunk.program))
+        if acronym is None:
+            return False
         return _chunk_content_matches_program(chunk.content, acronym)
 
     if intent == "scholarship":
@@ -932,22 +925,18 @@ def _evidence_matches_query_context(query: str, chunk: KnowledgeChunk) -> bool:
     if intent == "eligibility":
         if category != "undergraduate_programs":
             return False
-        if acronym is None:
+        if acronym is None and program_phrase is None:
             return True
         program = str(chunk.program or "")
-        return bool(program) and _chunk_program_matches(
-            program, acronym
-        ) and _program_level_matches(query, program, acronym)
+        return bool(program) and program_matches(program)
 
     if intent == "program_info":
         if category != "undergraduate_programs":
             return False
-        if acronym is None:
+        if acronym is None and program_phrase is None:
             return True
         program = str(chunk.program or "")
-        return bool(program) and _chunk_program_matches(
-            program, acronym
-        ) and _program_level_matches(query, program, acronym)
+        return bool(program) and program_matches(program)
 
     if intent == "contact":
         return category == "admission_contact_information"
@@ -965,13 +954,11 @@ def _evidence_matches_query_context(query: str, chunk: KnowledgeChunk) -> bool:
             "current_admission_information",
         }
 
-    if acronym is not None and intent is None:
+    if (acronym is not None or program_phrase is not None) and intent is None:
         if category not in {"undergraduate_programs", "program_specific_admission"}:
             return False
         program = str(chunk.program or "")
-        return bool(program) and _chunk_program_matches(
-            program, acronym
-        ) and _program_level_matches(query, program, acronym)
+        return bool(program) and program_matches(program)
 
     return True
 
@@ -1017,35 +1004,35 @@ def _fact_intent(query: str) -> Optional[str]:
     return None
 
 
+def _program_lane_category(
+    intent: Optional[QueryIntent], query: str
+) -> Optional[str]:
+    """Narrow only the supplemental program-name lane to compatible evidence."""
+
+    if intent is QueryIntent.TUITION:
+        return (
+            "international_admission"
+            if _INTERNATIONAL_CURRENCY_PATTERN.search(query)
+            else "tuition_and_fees"
+        )
+    if intent in {QueryIntent.PROGRAM_INFO, QueryIntent.ELIGIBILITY}:
+        return "undergraduate_programs"
+    if intent is QueryIntent.WAIVER:
+        return "waivers"
+    return None
+
+
 def _chunk_content_matches_program(content: str, acronym: str) -> bool:
-    lowered = unicodedata.normalize("NFKC", content).casefold()
-    phrase = _PROGRAM_QUERY_MARKERS[acronym].casefold()
-    return phrase in lowered or _contains_ascii_token(lowered, acronym)
+    item = PROGRAM_BY_MARKER.get(acronym)
+    if item is None:
+        return False
+    return program_phrase_matches(content, item.canonical)
 
 
 def _program_level_matches(query: str, program: str, acronym: str) -> bool:
     """Keep the intended degree level when an acronym exists at both levels."""
 
-    lowered_query = query.casefold()
-    lowered_program = program.casefold().strip()
-    if "diploma holder" in lowered_program and "diploma" not in lowered_query:
-        return False
-    program_is_master = bool(
-        re.match(r"(?:m\.?\s*sc\.?|master|mba\b|ll\.?\s*m\.?)", lowered_program)
-    )
-    asks_for_master = bool(
-        re.search(r"\b(?:masters?|m\.?\s*sc\.?|postgraduate)\b", lowered_query)
-    )
-    asks_for_bachelor = bool(
-        re.search(r"\b(?:bachelors?|b\.?\s*sc\.?|undergraduate)\b", lowered_query)
-    )
-    if asks_for_master:
-        return program_is_master
-    if asks_for_bachelor:
-        return not program_is_master
-    if acronym in _DEFAULT_POSTGRADUATE_PROGRAM_MARKERS:
-        return program_is_master
-    return not program_is_master
+    return program_level_matches(query, program, acronym)
 
 
 def _document_level_matches(query: str, chunk: KnowledgeChunk) -> bool:

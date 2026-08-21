@@ -4,11 +4,17 @@ import {
   ChatIcon,
   CheckIcon,
   ClipboardIcon,
-  ExternalLinkIcon,
   GraduationIcon,
   ShieldIcon,
   SparkleIcon,
 } from "@/components/ui/icons";
+import { createPageMetadata } from "@/lib/site";
+
+export const metadata = createPageMetadata({
+  title: "Verified DIU Admission Guidance",
+  description: "AI-powered admission assistance grounded in verified Daffodil International University information.",
+  path: "/",
+});
 
 const capabilities = [
   {
@@ -44,19 +50,19 @@ export default function Home() {
               DIU-specific admission intelligence
             </span>
             <h1 className="text-balance mt-7 text-[clamp(2.8rem,7vw,5.4rem)] font-semibold leading-[0.98] tracking-[-0.06em] text-ink">
-              Admission guidance,
-              <span className="block text-brand">grounded in DIU.</span>
+              DIU Admission
+              <span className="block text-brand">AI</span>
             </h1>
             <p className="mt-7 max-w-xl text-base leading-7 text-muted sm:text-lg sm:leading-8">
-              Ask questions, understand requirements, and check your eligibility with an
-              AI assistant designed specifically for Daffodil International University.
+              AI-powered admission assistance grounded in verified Daffodil International
+              University information.
             </p>
-            <div className="mt-9 flex flex-col gap-3 sm:flex-row">
+            <div className="mt-9 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
               <Link
                 className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-brand px-6 py-3 text-sm font-bold text-white shadow-[0_12px_28px_rgba(8,120,63,0.24)] transition hover:-translate-y-0.5 hover:bg-brand-dark"
                 href="/chat"
               >
-                Start asking <ArrowRightIcon size={18} />
+                Ask Admission AI <ArrowRightIcon size={18} />
               </Link>
               <Link
                 className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border border-line bg-white px-6 py-3 text-sm font-bold text-ink transition hover:border-emerald-300 hover:bg-brand-soft"
@@ -64,7 +70,16 @@ export default function Home() {
               >
                 Check my eligibility
               </Link>
+              <Link
+                className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border border-line bg-white px-6 py-3 text-sm font-bold text-ink transition hover:border-emerald-300 hover:bg-brand-soft"
+                href="/programs"
+              >
+                Explore programs
+              </Link>
             </div>
+            <Link className="mt-4 inline-flex text-sm font-bold text-brand hover:text-brand-dark" href="/blog">
+              Read admission guides →
+            </Link>
             <div className="mt-9 flex flex-wrap gap-x-6 gap-y-3 text-xs font-semibold text-muted">
               {["Official-source citations", "3 language modes", "No sign-up needed"].map(
                 (item) => (
@@ -97,43 +112,24 @@ export default function Home() {
                   RESEARCH AI
                 </span>
               </div>
-              <div className="space-y-5 p-5 sm:p-6">
-                <div className="ml-auto max-w-[82%] rounded-2xl rounded-br-md bg-brand px-4 py-3 text-sm leading-6 text-white">
-                  Can I apply for CSE with SSC 4.2 and HSC 4.0?
-                </div>
-                <div className="max-w-[92%] rounded-2xl rounded-bl-md border border-line bg-white px-4 py-4 text-sm leading-6 text-ink shadow-sm">
-                  <div className="mb-2 flex items-center gap-2 text-xs font-bold text-brand">
-                    <SparkleIcon size={14} /> DIU Admission AI
+              <div className="space-y-4 p-5 sm:p-6">
+                <p className="text-xs font-bold uppercase tracking-[0.1em] text-brand">Research with evidence</p>
+                {[
+                  ["Programs and degree levels", "Distinguish exact program names and undergraduate or postgraduate study."],
+                  ["Tuition and admission costs", "Retrieve the matching structured fee evidence for a named program."],
+                  ["Requirements and eligibility", "Keep documented admission rules separate from scholarships and waivers."],
+                  ["Applications and documents", "Follow current source links and official application channels."],
+                ].map(([title, description]) => (
+                  <div className="rounded-xl border border-line bg-white p-4 shadow-sm" key={title}>
+                    <p className="text-sm font-bold text-ink">{title}</p>
+                    <p className="mt-1 text-xs leading-5 text-muted">{description}</p>
                   </div>
-                  I can help assess that. Your eligibility depends on your academic group
-                  and subject results as well as GPA.
-                  <div className="mt-4 rounded-xl bg-brand-soft p-3 text-xs text-brand-dark">
-                    <p className="font-bold">One detail needed</p>
-                    <p className="mt-1 text-emerald-800">
-                      Were you in the Science group?
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-center justify-between rounded-xl border border-line bg-canvas/80 px-4 py-3 text-xs">
-                  <span className="font-semibold text-muted">Grounded in DIU sources</span>
-                  <a
-                    className="inline-flex items-center gap-1 font-bold text-brand"
-                    href="https://daffodilvarsity.edu.bd/"
-                    rel="noopener noreferrer"
-                    target="_blank"
-                  >
-                    View source <ExternalLinkIcon size={13} />
-                  </a>
+                ))}
+                <div className="rounded-xl bg-brand-soft p-4 text-xs leading-5 text-brand-dark">
+                  Citations appear when compatible evidence is available. Unknown or unsupported facts should remain unknown.
                 </div>
               </div>
-              <div className="border-t border-line bg-white p-4">
-                <div className="flex h-12 items-center justify-between rounded-xl border border-line px-4 text-sm text-muted shadow-sm">
-                  Ask about DIU admission...
-                  <span className="grid size-8 place-items-center rounded-lg bg-brand text-white">
-                    <ArrowRightIcon size={16} />
-                  </span>
-                </div>
-              </div>
+              <div className="border-t border-line bg-white p-4"><Link className="flex h-12 items-center justify-between rounded-xl border border-line px-4 text-sm font-bold text-brand shadow-sm hover:bg-brand-soft" href="/chat">Ask about DIU admission<span className="grid size-8 place-items-center rounded-lg bg-brand text-white"><ArrowRightIcon size={16} /></span></Link></div>
             </div>
           </div>
         </div>
@@ -167,6 +163,22 @@ export default function Home() {
       </section>
 
       <section className="border-y border-line bg-white">
+        <div className="page-shell py-16 sm:py-20">
+          <div className="max-w-3xl">
+            <span className="eyebrow">Admission information you can research</span>
+            <h2 className="text-balance mt-4 text-3xl font-semibold tracking-[-0.04em] sm:text-4xl">Start with a focused question, then inspect the evidence.</h2>
+            <p className="mt-4 text-base leading-7 text-muted">Explore exact program titles, program-specific tuition information, admission documents, deterministic eligibility evidence, and current scholarship or waiver sources.</p>
+          </div>
+          <div className="mt-8 flex flex-wrap gap-3">
+            <Link className="rounded-xl border border-line bg-canvas px-4 py-3 text-sm font-bold hover:border-emerald-300" href="/programs">Programs</Link>
+            <Link className="rounded-xl border border-line bg-canvas px-4 py-3 text-sm font-bold hover:border-emerald-300" href="/blog/diu-tuition-fees-guide">Tuition guide</Link>
+            <Link className="rounded-xl border border-line bg-canvas px-4 py-3 text-sm font-bold hover:border-emerald-300" href="/blog/diu-admission-requirements-guide">Requirements guide</Link>
+            <Link className="rounded-xl border border-line bg-canvas px-4 py-3 text-sm font-bold hover:border-emerald-300" href="/blog/diu-scholarships-waivers-guide">Scholarships and waivers</Link>
+          </div>
+        </div>
+      </section>
+
+      <section className="border-b border-line bg-white">
         <div className="page-shell grid gap-10 py-16 lg:grid-cols-[1fr_auto] lg:items-center">
           <div className="max-w-2xl">
             <span className="eyebrow">

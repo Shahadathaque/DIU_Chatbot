@@ -67,6 +67,7 @@ export interface HealthResponse {
     database: "ok" | "not_configured" | "error";
     model_endpoint: "ok" | "not_configured" | "error";
     rag_backend: "ok" | "not_configured" | "error";
+    runtime_catalog?: "ok" | "not_configured" | "error";
   };
 }
 

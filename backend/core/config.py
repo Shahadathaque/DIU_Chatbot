@@ -3,6 +3,7 @@
 import logging
 from functools import lru_cache
 from typing import Any, Literal, Optional
+from urllib.parse import urlsplit
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -80,6 +81,7 @@ class Settings(BaseSettings):
             message = "CORS_ORIGINS required in production"
             LOGGER.error(message)
             raise ValueError(message)
+        self.production_cors_origins()
         model_endpoint = self.generator_api_base or self.openai_api_base
         if not model_endpoint:
             message = (
@@ -125,6 +127,36 @@ class Settings(BaseSettings):
             message = "EMBEDDING_API_MODEL required in production"
             LOGGER.error(message)
             raise ValueError(message)
+
+    def production_cors_origins(self) -> list[str]:
+        """Return exact browser origins and reject unsafe production values."""
+
+        origins = [
+            origin.strip()
+            for origin in self.cors_origins.split(",")
+            if origin.strip()
+        ]
+        if not origins:
+            raise ValueError("CORS_ORIGINS required in production")
+        for origin in origins:
+            if origin == "*":
+                raise ValueError(
+                    "CORS_ORIGINS cannot contain '*' in production"
+                )
+            parsed = urlsplit(origin)
+            if (
+                parsed.scheme not in {"http", "https"}
+                or not parsed.hostname
+                or parsed.username is not None
+                or parsed.password is not None
+                or parsed.path not in {"", "/"}
+                or parsed.query
+                or parsed.fragment
+            ):
+                raise ValueError(
+                    "CORS_ORIGINS entries must be exact http(s) origins"
+                )
+        return list(dict.fromkeys(origin.rstrip("/") for origin in origins))
 
 
 @lru_cache

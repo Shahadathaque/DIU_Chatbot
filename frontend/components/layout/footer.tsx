@@ -13,14 +13,15 @@ export function Footer() {
             DIU Admission AI
           </div>
           <p className="mt-3 max-w-xl text-sm leading-6 text-muted">
-            A domain-specific university research project exploring fine-tuned language
-            models and retrieval-augmented generation for admission support.
+            An independent research project for source-grounded DIU admission support. It
+            is not an official university service; verify important details with DIU.
           </p>
         </div>
         <div className="flex flex-wrap gap-x-5 gap-y-3 text-sm font-semibold text-muted">
           <Link className="hover:text-brand" href="/chat">Ask AI</Link>
           <Link className="hover:text-brand" href="/eligibility">Eligibility</Link>
           <Link className="hover:text-brand" href="/programs">Programs</Link>
+          <Link className="hover:text-brand" href="/blog">Admission Guides</Link>
           <a
             className="inline-flex items-center gap-1.5 hover:text-brand"
             href="https://daffodilvarsity.edu.bd/"
