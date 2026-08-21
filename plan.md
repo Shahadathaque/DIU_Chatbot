@@ -671,6 +671,12 @@ scope), record it here with a short reason._
   deselected; 31 frontend tests, TypeScript, ESLint, and production build passed;
   npm reported zero vulnerabilities; all 50 cleaned tuition programs passed the
   catalog audit; and rendered local metadata, warning, sitemap, and robots output
-  were checked. Browser visual inspection remains unavailable because no in-app or
-  extension browser is connected. Selective publication and live deployment remain
-  pending the final git review; GitHub CLI authentication is currently invalid.
+  were checked. Selectively committed and pushed the reviewed implementation as
+  `e69a4532`; the existing Render service is live on that exact revision, all five
+  known tuition regressions pass publicly, and non-credentialed exact-origin CORS
+  is active. Browser visual inspection remains unavailable because no in-app or
+  extension browser is connected. The existing Vercel project rejected the CLI
+  deployment as unauthorized and its Git integration did not publish the revision.
+  The refresh workflow is pushed, but its first run is blocked until the user
+  explicitly authorizes transferring the ignored local database/embedding values
+  into GitHub repository secrets.
