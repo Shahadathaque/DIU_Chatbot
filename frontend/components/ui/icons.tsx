@@ -29,6 +29,32 @@ export function ArrowRightIcon(props: IconProps) {
   );
 }
 
+export function AdmissionLogoIcon(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path
+        d="M5.8 4.5h12.4A2.8 2.8 0 0 1 21 7.3v8.2a2.8 2.8 0 0 1-2.8 2.8H11L6 21v-2.7h-.2A2.8 2.8 0 0 1 3 15.5V7.3a2.8 2.8 0 0 1 2.8-2.8Z"
+        stroke="currentColor"
+        strokeLinejoin="round"
+        strokeWidth="1.7"
+      />
+      <path
+        d="m7.3 10.2 4.7-2.5 4.7 2.5-4.7 2.5-4.7-2.5Z"
+        stroke="currentColor"
+        strokeLinejoin="round"
+        strokeWidth="1.5"
+      />
+      <path
+        d="M9.2 11.5v2.1c1.6 1.2 4 1.2 5.6 0v-2.1M16.7 10.2v3"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.5"
+      />
+    </IconBase>
+  );
+}
+
 export function ChatIcon(props: IconProps) {
   return (
     <IconBase {...props}>

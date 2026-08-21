@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title id="title">DIU Admission AI</title>
+  <rect width="64" height="64" rx="16" fill="#08783f"/>
+  <path d="M15 15h34a7 7 0 0 1 7 7v21a7 7 0 0 1-7 7H29l-12 8v-8h-2a7 7 0 0 1-7-7V22a7 7 0 0 1 7-7Z" fill="none" stroke="#fff" stroke-linejoin="round" stroke-width="4"/>
+  <path d="m19 30 13-7 13 7-13 7-13-7Z" fill="none" stroke="#fff" stroke-linejoin="round" stroke-width="3.5"/>
+  <path d="M24 34v6c4.5 3.5 11.5 3.5 16 0v-6m5-4v8" fill="none" stroke="#fff" stroke-linecap="round" stroke-linejoin="round" stroke-width="3.5"/>
+</svg>

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ExternalLinkIcon, SparkleIcon } from "@/components/ui/icons";
+import { AdmissionLogoIcon, ExternalLinkIcon } from "@/components/ui/icons";
 
 export function Footer() {
   return (
@@ -8,7 +8,7 @@ export function Footer() {
         <div>
           <div className="flex items-center gap-2 text-sm font-bold text-ink">
             <span className="grid size-8 place-items-center rounded-lg bg-brand text-white">
-              <SparkleIcon size={16} />
+              <AdmissionLogoIcon size={18} />
             </span>
             DIU Admission AI
           </div>
@@ -29,14 +29,6 @@ export function Footer() {
             target="_blank"
           >
             Shahadat on LinkedIn <ExternalLinkIcon size={14} />
-          </a>
-          <a
-            className="inline-flex items-center gap-1.5 hover:text-brand"
-            href="https://elearn.daffodilvarsity.edu.bd/course/view.php?id=36937"
-            rel="noopener noreferrer"
-            target="_blank"
-          >
-            AI Lab course <ExternalLinkIcon size={14} />
           </a>
           <a
             className="inline-flex items-center gap-1.5 hover:text-brand"

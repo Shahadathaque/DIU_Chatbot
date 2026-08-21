@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
-import { MenuIcon, SparkleIcon, XIcon } from "@/components/ui/icons";
+import { AdmissionLogoIcon, MenuIcon, XIcon } from "@/components/ui/icons";
 
 const navItems = [
   { href: "/", label: "Home" },
@@ -26,7 +26,7 @@ export function Header() {
           onClick={() => setIsOpen(false)}
         >
           <span className="grid size-10 place-items-center rounded-xl bg-brand text-white shadow-[0_7px_18px_rgba(8,120,63,0.24)]">
-            <SparkleIcon size={20} />
+            <AdmissionLogoIcon size={22} />
           </span>
           <span>
             <span className="block text-[15px] font-bold tracking-[-0.02em] text-ink">
