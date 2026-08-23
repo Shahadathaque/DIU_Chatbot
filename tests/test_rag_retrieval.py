@@ -788,6 +788,42 @@ def test_program_list_with_named_faculty_returns_only_that_faculty_rows() -> Non
     }
 
 
+def test_faculty_acronym_department_query_filters_catalog_rows() -> None:
+    fsit = replace(
+        replace(
+            knowledge_chunk(
+                "cse-program",
+                source_id="DIU-PROG-001",
+                content="B. Sc. in Computer Science and Engineering | Science and Information Technology",
+                category="undergraduate_programs",
+                program="B. Sc. in Computer Science and Engineering",
+            ),
+            faculty="Science and Information Technology",
+        ),
+        content_type="table",
+    )
+    business = replace(
+        replace(
+            knowledge_chunk(
+                "bba-program",
+                source_id="DIU-PROG-001",
+                content="Bachelor of Business Administration | Business & Entrepreneurship",
+                category="undergraduate_programs",
+                program="Bachelor of Business Administration",
+            ),
+            faculty="Business & Entrepreneurship",
+        ),
+        content_type="table",
+    )
+    store = _store()
+    store.upsert_chunks([fsit, business], [[1.0, 0.0], [1.0, 0.0]])
+    retriever = Retriever(FakeEmbedder(), store, max_results_per_source=5)
+
+    results = retriever.retrieve("fsit department", top_k=5)
+
+    assert [result.chunk.chunk_id for result in results] == ["cse-program"]
+
+
 def test_bdt_tuition_query_excludes_usd_and_program_catalog_evidence() -> None:
     """Explicit BDT requests must return only matching local fee evidence."""
 

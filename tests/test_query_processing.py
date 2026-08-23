@@ -60,6 +60,13 @@ def test_waiver_reformulation_corrects_typo_and_preserves_category_focus() -> No
     assert "female waiver" in analysis.retrieval_query.casefold()
 
 
+def test_faculty_department_query_uses_program_catalog_intent() -> None:
+    analysis = analyze_query("fsit department")
+
+    assert analysis.intent is QueryIntent.PROGRAM_CATALOG
+    assert analysis.is_admission_query
+
+
 def test_typo_correction_does_not_turn_unrelated_words_into_admission_terms() -> None:
     analysis = analyze_query("Recommend a documentary about weather")
 

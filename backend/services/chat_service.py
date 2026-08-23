@@ -102,6 +102,13 @@ _PROGRAM_SENSITIVE_TOPICS = {
 }
 _GPA_MENTION_PATTERN = re.compile(r"(?i)\b(?:gpa|grades?)\b")
 _GPA_FIVE_PATTERN = re.compile(r"(?i)\bgpa\s*-?\s*5(?:\.0+)?\b")
+_ELLIPTICAL_FOLLOWUP_PATTERN = re.compile(
+    r"(?i)^\s*(?:"
+    r"what\s+about\b|how\s+about\b|and\b|also\b|then\b|same\b|"
+    r"(?:in\s+)?(?:bdt|taka|tk\.?|usd|dollars?)\b|"
+    r"for\s+(?:me|it|that|this)\b"
+    r")"
+)
 _WAIVER_PROGRAM_CLARIFICATION: Dict[Language, str] = {
     "en": (
         "The waiver cannot be determined from GPA alone because DIU's policy "
@@ -191,8 +198,30 @@ def resolve_followup(message: str, history: Optional[Sequence[Any]] = None) -> s
 
     current_program = _matched_program_phrase(message)
     current_topic = _followup_topic(message)
-    previous_program = _latest_history_value(history, _matched_program_phrase)
-    previous_topic = _latest_history_value(history, _followup_topic)
+    current_intent = analyze_query(
+        message, program_phrase=current_program
+    ).intent
+    has_standalone_intent = bool(
+        current_program is None
+        and current_topic is None
+        and current_intent is not None
+    )
+    carries_context = bool(
+        not has_standalone_intent
+        and (
+            current_program is not None
+            or current_topic is not None
+            or _ELLIPTICAL_FOLLOWUP_PATTERN.search(message)
+        )
+    )
+    previous_program = (
+        _latest_history_value(history, _matched_program_phrase)
+        if carries_context
+        else None
+    )
+    previous_topic = (
+        _latest_history_value(history, _followup_topic) if carries_context else None
+    )
 
     program = current_program or previous_program
     topic = current_topic or previous_topic

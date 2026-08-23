@@ -909,6 +909,8 @@ def _matched_catalog_faculty(
         "courses",
         "degrees",
         "diu",
+        "department",
+        "departments",
         "faculty",
         "offer",
         "offered",
@@ -928,6 +930,15 @@ def _matched_catalog_faculty(
         display_names[key] = faculty
         faculty_tokens = _meaningful_tokens(faculty) - {"and", "faculty", "of"}
         overlap = len(query_tokens & faculty_tokens)
+        acronym_tokens = [
+            token.casefold()
+            for token in _TOKEN_RE.findall(unicodedata.normalize("NFKC", faculty))
+            if token.casefold() not in {"and", "faculty", "of"}
+        ]
+        initials = "".join(token[0] for token in acronym_tokens if token)
+        acronyms = {initials, "f{}".format(initials)} if initials else set()
+        if query_tokens & acronyms:
+            overlap += 1
         if overlap:
             scores[key] = max(scores.get(key, 0), overlap)
     if not scores:
@@ -945,6 +956,8 @@ def _catalog_faculty_focus(query: str) -> str:
         "available",
         "courses",
         "degrees",
+        "department",
+        "departments",
         "diu",
         "does",
         "faculty",

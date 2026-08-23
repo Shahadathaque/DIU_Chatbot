@@ -709,3 +709,12 @@ scope), record it here with a short reason._
   Verification passed with 479 backend tests (41 integration tests deselected),
   Python compilation, and clean diff validation. Production verification follows
   the reviewed commit and deployment.
+- **2026-08-23** — Conversation context isolation and faculty acronym retrieval
+  repaired locally. A new standalone query no longer inherits an unrelated topic
+  from chat history; context is retained only for explicit topics, named programs,
+  or genuine elliptical follow-ups. Faculty/department catalog requests are now
+  recognized, and faculty acronyms such as FSIT are derived from verified catalog
+  metadata rather than a hard-coded faculty list. The configured pgvector check
+  returned all 13 Science and Information Technology rows and no other faculty for
+  `fsit department`. Verification passed with 482 backend tests (41 integration
+  tests deselected), Python compilation, and clean diff validation.

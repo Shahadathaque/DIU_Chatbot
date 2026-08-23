@@ -110,6 +110,7 @@ _PROGRAM_LIST_PATTERN = re.compile(
     r"\b(?:show|list)\b.*\bprogram\s+catalog\b|\bprogram\s+catalog\b|"
     r"প্রোগ্রাম|কোর্স)"
 )
+_FACULTY_CATALOG_PATTERN = re.compile(r"(?i)\b(?:facult(?:y|ies)|departments?)\b")
 _PROGRAM_WORD_PATTERN = re.compile(r"(?i)\b(?:programs?|courses?|degrees?)\b|প্রোগ্রাম|কোর্স")
 _DEADLINE_PATTERN = re.compile(r"(?i)\b(?:deadline|last\s+date|when\s+to\s+apply)\b|শেষ\s+তারিখ")
 _CONTACT_PATTERN = re.compile(r"(?i)\b(?:contact|phone|email|address)\b|যোগাযোগ")
@@ -244,7 +245,9 @@ def _intent(query: str, program_phrase: Optional[str]) -> Optional[QueryIntent]:
         return QueryIntent.DEADLINE
     if _CONTACT_PATTERN.search(query):
         return QueryIntent.CONTACT
-    if _PROGRAM_LIST_PATTERN.search(query):
+    if _PROGRAM_LIST_PATTERN.search(query) or (
+        program_phrase is None and _FACULTY_CATALOG_PATTERN.search(query)
+    ):
         return QueryIntent.PROGRAM_CATALOG
     if program_phrase or _PROGRAM_WORD_PATTERN.search(query):
         return QueryIntent.PROGRAM_INFO

@@ -252,3 +252,16 @@ def test_resolve_followup_recognizes_misspelled_financial_aid_topics() -> None:
 
     assert "Computer Science and Engineering" in waiver
     assert "Computer Science and Engineering" in scholarship
+
+
+def test_resolve_followup_does_not_reuse_topic_for_a_new_faculty_query() -> None:
+    history = [
+        ChatTurn(role="user", content="scholarship"),
+        ChatTurn(role="assistant", content="Previous scholarship answer."),
+    ]
+
+    for message in ("fsit department", "what about fsit department"):
+        resolved = resolve_followup(message, history)
+
+        assert resolved == message
+        assert "scholarship" not in resolved.casefold()
