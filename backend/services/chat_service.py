@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional, Sequence
 
 from backend.core.errors import ApiError
 from backend.models.chat import ChatResponse, ChatSource, Confidence, Language
+from rag.faculty_resolution import matched_faculty_phrase
 from rag.generator import Generator, GeneratorUnavailableError
 from rag.program_resolution import (
     PROGRAM_BY_MARKER,
@@ -213,6 +214,12 @@ def resolve_followup(message: str, history: Optional[Sequence[Any]] = None) -> s
     """
 
     current_program = _matched_program_phrase(message)
+    # A faculty name can contain a valid partial program alias (for example,
+    # ``Agriculture Sciences`` or ``Business & Entrepreneurship``). Faculty
+    # scope is more specific in this context and must not be rewritten into a
+    # program follow-up before query analysis and catalog retrieval run.
+    if matched_faculty_phrase(message) is not None:
+        current_program = None
     current_topic = _followup_topic(message)
     current_intent = analyze_query(
         message, program_phrase=current_program

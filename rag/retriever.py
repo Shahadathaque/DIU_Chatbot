@@ -506,10 +506,10 @@ class Retriever:
                     filters=SearchFilters(category=category, program=program),
                 )
                 candidates = self._merge_candidates(focus_candidates, candidates)
-        named_faculty = (
-            matched_faculty_phrase(intent_query)
-            or _matched_catalog_faculty(intent_query, candidates)
-        )
+            named_faculty = (
+                matched_faculty_phrase(intent_query)
+                or _matched_catalog_faculty(intent_query, candidates)
+            )
         if named_faculty is not None:
             candidates = [
                 match

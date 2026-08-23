@@ -229,6 +229,42 @@ def test_bare_faculty_name_returns_its_structured_program_catalog() -> None:
     _reset_overrides()
 
 
+def test_bare_faculty_names_do_not_become_partial_program_followups() -> None:
+    cases = {
+        "Agriculture Sciences": [
+            _program_result(
+                "agriculture-program",
+                "Bachelor of Agricultural Science",
+                "Agriculture Sciences",
+            )
+        ],
+        "Business & Entrepreneurship": [
+            _program_result(
+                "business-program",
+                "Bachelor of Business Administration (BBA)",
+                "Business & Entrepreneurship",
+            )
+        ],
+    }
+    retriever = _FakeRetriever(cases)
+    generator = _FakeGenerator("The generator must not handle faculty catalogs.")
+    client = _client(retriever, generator)
+
+    for query, results in cases.items():
+        response = client.post(
+            "/api/chat", json={"message": query, "language": "en"}
+        )
+
+        assert response.status_code == 200
+        assert query in response.json()["answer"]
+        assert results[0].chunk.program in response.json()["answer"]
+
+    assert retriever.calls == list(cases)
+    assert retriever.top_ks == [60, 60]
+    assert generator.calls == []
+    _reset_overrides()
+
+
 def test_generator_receives_grounded_evidence() -> None:
     retriever = _FakeRetriever(
         {

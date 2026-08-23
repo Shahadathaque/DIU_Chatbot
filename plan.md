@@ -70,8 +70,11 @@ all 7 faculties both locally and against the hosted database. Standard
 verification passes the complete backend and frontend suites plus Python
 compilation, lint, TypeScript, and production build. The private held-out research
 evaluation artifact is absent locally, so its 41 artifact-dependent integrations
-remain intentionally skipped. The current faculty-resolution repair is ready for
-reviewed commit and deployment.
+remain intentionally skipped. The complete backend suite now passes 621 tests.
+Faculty names that overlap partial program aliases remain faculty catalog queries
+through the conversation resolver, while faculty-scoped schedule questions retain
+their more specific schedule intent. The current repair is verified and authorized
+for production deployment.
 
 ### Next
 
@@ -790,7 +793,10 @@ scope), record it here with a short reason._
   partial program aliases, scopes canonical search and source metadata to the
   requested faculty, and leaves program-specific queries such as Civil
   Engineering and Information Technology unchanged. Added a cleaned-table-driven
-  complete faculty audit. Verification passed with 84/84 hosted admission
+  complete faculty audit. The conversation resolver also preserves faculty scope
+  when a faculty name overlaps a program alias, and retriever faculty-table
+  filtering is limited to catalog intent so admission schedules keep their
+  specific evidence lane. Verification passed with 621 backend tests, 84/84 hosted admission
   variants, 60/60 adversarial cases, 211/211 tuition variants, and 25/25 faculty
   catalog variants covering all 7 faculties and all 52 cleaned program rows in
   both deterministic and configured hosted-retrieval modes.
