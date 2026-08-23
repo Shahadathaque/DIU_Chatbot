@@ -214,6 +214,13 @@ preserving independent program mentions elsewhere in the same query. This makes
 `Information Technology and Management` beat `management`, without causing a
 different-length pair such as `CSE and Master of Pharmacy` to lose one program.
 
+Bare program subjects are also accepted when at least two meaningful words form
+a contiguous fragment of exactly one canonical program name. For example,
+`Information Technology` resolves to Information Technology & Management even
+without words such as “program” or “tuition.” Shared fragments remain unresolved
+rather than being guessed; `Business Administration` can refer to more than one
+degree and therefore requires clarification.
+
 An explicit postgraduate marker cannot fall back to the undergraduate version.
 For program-specific tuition questions, canonical program and degree-level
 compatibility take precedence over generic semantic similarity. Multi-program

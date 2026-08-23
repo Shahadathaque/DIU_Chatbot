@@ -85,6 +85,29 @@ def test_program_name_is_preserved_in_reformulation() -> None:
 
 
 @pytest.mark.parametrize(
+    "query",
+    [
+        "Information Technology",
+        "Tell me about Information Technology",
+        "Is Information Technology available?",
+    ],
+)
+def test_unique_multiword_program_subject_is_program_information(query: str) -> None:
+    analysis = analyze_query(query)
+
+    assert analysis.intent is QueryIntent.PROGRAM_INFO
+    assert analysis.is_admission_query
+    assert "information technology & management" in analysis.retrieval_query.casefold()
+
+
+def test_shared_multiword_subject_is_not_guessed_as_one_program() -> None:
+    analysis = analyze_query("Business Administration")
+
+    assert analysis.intent is None
+    assert not analysis.is_admission_query
+
+
+@pytest.mark.parametrize(
     ("query", "canonical"),
     [
         ("Information Technology and Management tuition fees", "Information Technology & Management"),

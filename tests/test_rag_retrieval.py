@@ -538,6 +538,35 @@ def test_short_existence_query_uses_program_phrase_lane() -> None:
     assert "Bachelor of Business Administration" in embedder.queries
 
 
+def test_unique_partial_program_subject_uses_canonical_program_lane() -> None:
+    itm = knowledge_chunk(
+        "itm-program",
+        source_id="DIU-PROG-001",
+        content=(
+            "B.Sc. in Information Technology & Management (ITM) | ITM | "
+            "Undergraduate | Science and Information Technology"
+        ),
+        category="undergraduate_programs",
+        program="B.Sc. in Information Technology & Management (ITM)",
+    )
+    management = knowledge_chunk(
+        "management-program",
+        source_id="DIU-PROG-001",
+        content="BBA in Management | Undergraduate | Business & Entrepreneurship",
+        category="undergraduate_programs",
+        program="BBA in Management",
+    )
+    store = _store()
+    store.upsert_chunks([management, itm], [[1.0, 0.0], [1.0, 0.0]])
+    embedder = FakeEmbedder()
+    retriever = Retriever(embedder, store)
+
+    results = retriever.retrieve("Information Technology", top_k=3)
+
+    assert [result.chunk.chunk_id for result in results] == ["itm-program"]
+    assert "Information Technology & Management" in embedder.queries
+
+
 def test_domain_gate_accepts_program_phrase_and_gpa_apply_queries() -> None:
     """Program-naming and GPA/apply queries must pass the admission domain gate.
 

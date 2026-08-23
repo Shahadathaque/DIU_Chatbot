@@ -72,6 +72,7 @@ INTENT_CASES = (
 
 
 PROGRAM_CASES = (
+    ("Information Technology", "Information Technology & Management"),
     ("Information Technology and Management tuition fees", "Information Technology & Management"),
     ("BBA in Finance and Banking tuition fees", "Finance & Banking"),
     ("Development Studies tuition fees", "Development Studies"),

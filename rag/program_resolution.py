@@ -19,7 +19,7 @@ _PARENTHETICAL_RE = re.compile(r"\([^)]*\)")
 _INTENT_WORDS_RE = re.compile(
     r"\b(?:diu|daffodil|what|which|tell|show|give|me|about|does|do|have|offer|"
     r"offered|program|programme|course|degree|tuition|fees?|cost|total|"
-    r"payable|admission|local|student|information|details?|please)\b"
+    r"payable|admission|local|students?|details?|please|is|are|available)\b"
 )
 _CASE_SENSITIVE_SHORT_ALIASES = {"ce", "te"}
 
@@ -180,7 +180,38 @@ def named_program_markers(query: str) -> list[str]:
 
 def matched_program_phrase(query: str) -> Optional[str]:
     markers = named_program_markers(query)
-    return PROGRAM_BY_MARKER[markers[0]].canonical if len(markers) == 1 else None
+    if len(markers) == 1:
+        return PROGRAM_BY_MARKER[markers[0]].canonical
+    if markers:
+        return None
+    return _unique_partial_program_phrase(query)
+
+
+def _unique_partial_program_phrase(query: str) -> Optional[str]:
+    """Resolve a distinctive multiword subject fragment without guessing.
+
+    Users often type only the meaningful part of a program name, such as
+    ``Information Technology`` instead of the complete catalog title.  Exact
+    aliases remain the primary path above.  This fallback accepts a fragment
+    only when at least two non-boilerplate words occur contiguously in exactly
+    one canonical program name.  Consequently, distinctive fragments work
+    across the catalog while shared subjects remain ambiguous.
+    """
+
+    focus = program_search_phrase(query)
+    if focus is None:
+        return None
+    focus_norm = normalize_program_text(focus)
+    if len(focus_norm.split()) < 2:
+        return None
+    matches = {
+        item.marker
+        for item in PROGRAM_ALIASES
+        if _contains_phrase(normalize_program_text(item.canonical), focus_norm)
+    }
+    if len(matches) != 1:
+        return None
+    return PROGRAM_BY_MARKER[next(iter(matches))].canonical
 
 
 def single_named_program_marker(query: str) -> Optional[str]:

@@ -774,3 +774,11 @@ scope), record it here with a short reason._
   84/84 admission retrieval variants and 211/211 local tuition queries across
   all 50 structured programs. Commit, push, and deployment are authorized only
   after these verification gates pass.
+- **2026-08-24** — Bare partial program-name resolution repaired generically.
+  Conversational filler no longer removes the meaningful word `information`,
+  and a multiword subject fragment is accepted only when it uniquely matches one
+  canonical program. `Information Technology`, its conversational variants, and
+  the live pgvector path now resolve to B.Sc. in Information Technology &
+  Management; ambiguous fragments are not guessed. Verification passed with 600
+  backend tests, 36 frontend tests, 84/84 live admission-retrieval variants,
+  52/52 query-quality cases, and 211/211 tuition queries across 50 programs.
