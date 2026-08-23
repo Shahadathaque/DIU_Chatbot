@@ -239,3 +239,16 @@ def test_resolve_followup_preserves_active_program_for_waiver_question() -> None
     assert "waiver" in resolved.casefold()
     assert "Software Engineering" in resolved
     assert "Computer Science and Engineering" not in resolved
+
+
+def test_resolve_followup_recognizes_misspelled_financial_aid_topics() -> None:
+    history = [
+        ChatTurn(role="user", content="Tell me about CSE"),
+        ChatTurn(role="assistant", content="Previous answer."),
+    ]
+
+    waiver = resolve_followup("female waever", history)
+    scholarship = resolve_followup("scholership", history)
+
+    assert "Computer Science and Engineering" in waiver
+    assert "Computer Science and Engineering" in scholarship

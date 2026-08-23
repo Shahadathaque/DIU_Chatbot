@@ -22,6 +22,8 @@ from rag.query_processing import QueryIntent, analyze_query
         ("admission cost", QueryIntent.TUITION),
         ("এডমিশন ফি কত?", QueryIntent.TUITION),
         ("Tell me about scholarships", QueryIntent.SCHOLARSHIP),
+        ("scholership", QueryIntent.SCHOLARSHIP),
+        ("female waever", QueryIntent.WAIVER),
         ("Show available programs", QueryIntent.PROGRAM_CATALOG),
         ("Show DIU's official program catalog", QueryIntent.PROGRAM_CATALOG),
         ("am i eligible for bsc in cse?", QueryIntent.ELIGIBILITY),
@@ -48,6 +50,22 @@ def test_application_reformulation_is_evidence_oriented() -> None:
 
     assert "admission application process" in analysis.retrieval_query.casefold()
     assert "flow" in analysis.retrieval_query.casefold()
+
+
+def test_waiver_reformulation_corrects_typo_and_preserves_category_focus() -> None:
+    analysis = analyze_query("female waever")
+
+    assert analysis.normalized_query == "female waiver"
+    assert analysis.intent is QueryIntent.WAIVER
+    assert "female waiver" in analysis.retrieval_query.casefold()
+
+
+def test_typo_correction_does_not_turn_unrelated_words_into_admission_terms() -> None:
+    analysis = analyze_query("Recommend a documentary about weather")
+
+    assert analysis.normalized_query == "Recommend a documentary about weather"
+    assert analysis.intent is None
+    assert not analysis.is_admission_query
 
 
 def test_program_name_is_preserved_in_reformulation() -> None:

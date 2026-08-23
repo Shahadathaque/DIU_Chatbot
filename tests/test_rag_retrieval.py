@@ -54,6 +54,22 @@ class _ScoringEmbedder:
         return [1.0, 0.0]
 
 
+class _AidFocusEmbedder:
+    """Separate canonical intent and raw user-focus embedding lanes."""
+
+    model_name = "fixture-embedding"
+    model_revision = None
+    dimension = 3
+
+    def embed_documents(self, texts: Sequence[str]) -> List[List[float]]:
+        raise AssertionError("test supplies document vectors directly")
+
+    def embed_query(self, query: str) -> List[float]:
+        if query.casefold() == "female waiver":
+            return [0.0, 1.0, 0.0]
+        return [1.0, 0.0, 0.0]
+
+
 def _store() -> InMemoryVectorStore:
     return InMemoryVectorStore(
         embedding_dimension=2,
@@ -419,6 +435,56 @@ def test_waiver_query_ranks_clean_table_chunks_above_messy_text_fragments() -> N
         "waiver-clean-table-cse",
     ]
     assert "waiver-messy-text" not in returned_ids
+
+
+def test_specific_waiver_focus_beats_generic_semantic_similarity() -> None:
+    generic = knowledge_chunk(
+        "generic-waiver",
+        source_id="DIU-WAV-001",
+        content="Official waiver policy and tuition fee waiver categories.",
+        category="waivers",
+    )
+    female = replace(
+        knowledge_chunk(
+            "female-waiver",
+            source_id="DIU-WAV-001",
+            content="Female Quota tuition fee waiver for undergraduate programs.",
+            category="waivers",
+        ),
+        content_type="table",
+    )
+    trailing_heading = knowledge_chunk(
+        "trailing-aid-heading",
+        source_id="DIU-WAV-001",
+        content=(
+            "General waiver application instructions and conditions that fill this "
+            "overlapping chunk before the next section starts. c) Female Quota:"
+        ),
+        category="waivers",
+    )
+    store = InMemoryVectorStore(
+        embedding_dimension=3,
+        embedding_model_name="fixture-embedding",
+    )
+    store.upsert_chunks(
+        [generic, female, trailing_heading],
+        [
+            [1.0, 0.0, 0.0],
+            [0.0, 0.65, math.sqrt(1.0 - 0.65 * 0.65)],
+            [0.0, 0.90, math.sqrt(1.0 - 0.90 * 0.90)],
+        ],
+    )
+    retriever = Retriever(
+        _AidFocusEmbedder(),
+        store,
+        candidate_multiplier=2,
+        max_results_per_source=10,
+    )
+
+    results = retriever.retrieve("female waever", top_k=2)
+
+    assert [result.chunk.chunk_id for result in results] == ["female-waiver"]
+    assert results[0].similarity_score < retriever.min_similarity_score
 
 
 def test_program_phrase_matcher_covers_existence_query_forms() -> None:

@@ -103,6 +103,37 @@ _ADMISSION_PROCESS_PATTERN = re.compile(
 )
 _PROGRAM_CATALOG_QUERY = "the complete DIU program catalog across all faculties"
 _PROGRAM_MISMATCH_PENALTY = -0.50
+_AID_FOCUS_IGNORED_TOKENS = {
+    "about",
+    "aid",
+    "any",
+    "available",
+    "categories",
+    "category",
+    "details",
+    "diu",
+    "does",
+    "fee",
+    "fees",
+    "financial",
+    "give",
+    "have",
+    "information",
+    "official",
+    "policy",
+    "rate",
+    "rates",
+    "scholarship",
+    "scholarships",
+    "show",
+    "tell",
+    "there",
+    "tuition",
+    "waiver",
+    "waivers",
+    "what",
+    "which",
+}
 def _matched_program_phrase(query: str) -> Optional[str]:
     """Return the official program phrase named by a program-related query."""
 
@@ -160,12 +191,14 @@ def is_explicitly_out_of_domain(query: str) -> bool:
 def is_likely_admission_query(query: str) -> bool:
     """Apply a transparent domain gate before accepting dense-vector evidence."""
 
-    lowered = unicodedata.normalize("NFKC", query).casefold()
+    analysis = analyze_query(query)
+    lowered = analysis.normalized_query.casefold()
     names_diu = any(marker in lowered for marker in _DIU_PHRASES) or any(
         _contains_ascii_token(lowered, acronym) for acronym in _DIU_ACRONYMS
     )
     return (
-        names_diu
+        analysis.is_admission_query
+        or names_diu
         or _matched_program_phrase(query) is not None
         or bool(_DOMAIN_TERM_PATTERN.search(lowered))
     )
@@ -247,11 +280,12 @@ class Retriever:
         _validated_score(relevance_threshold, name="min_relevance_score")
         if is_explicitly_out_of_domain(query):
             return []
-        intent_query = _base_query(query)
-        program_phrase = _matched_program_phrase(intent_query)
-        analysis = analyze_query(intent_query, program_phrase=program_phrase)
+        raw_intent_query = _base_query(query)
+        program_phrase = _matched_program_phrase(raw_intent_query)
+        analysis = analyze_query(raw_intent_query, program_phrase=program_phrase)
         if not analysis.is_admission_query:
             return []
+        intent_query = analysis.normalized_query
         program_list_query = bool(
             analysis.intent is QueryIntent.PROGRAM_CATALOG
             or _PROGRAM_LIST_PATTERN.search(intent_query)
@@ -291,6 +325,37 @@ class Retriever:
             )
         else:
             candidates = authoritative_candidates
+        exact_focus_chunk_ids: set[str] = set()
+        if (
+            program_phrase is None
+            and analysis.intent in {QueryIntent.SCHOLARSHIP, QueryIntent.WAIVER}
+        ):
+            focus_tokens = _aid_focus_tokens(intent_query)
+            if focus_tokens:
+                focus_category = (
+                    "waivers"
+                    if analysis.intent is QueryIntent.WAIVER
+                    else "scholarships"
+                )
+                focus_embedding = self.embedder.embed_query(intent_query)
+                focus_candidates = self.vector_store.search(
+                    focus_embedding,
+                    top_k=candidate_limit,
+                    filters=SearchFilters(
+                        category=category or focus_category,
+                        program=program,
+                    ),
+                )
+                exact_focus_candidates = [
+                    match
+                    for match in focus_candidates
+                    if _chunk_matches_aid_focus(match.chunk, focus_tokens)
+                ]
+                if exact_focus_candidates:
+                    candidates = exact_focus_candidates
+                    exact_focus_chunk_ids = {
+                        match.chunk.chunk_id for match in exact_focus_candidates
+                    }
         program_lane_category = category or _program_lane_category(
             analysis.intent, intent_query
         )
@@ -402,6 +467,15 @@ class Retriever:
                 and match.chunk.program
             ]
             candidates = structured_rows or catalog_candidates
+        if exact_focus_chunk_ids:
+            # Program-name and raw-phrase lanes run after the aid-focus lane.
+            # Keep them from reintroducing generic or heading-only chunks once
+            # exact qualifier-compatible evidence has been established.
+            candidates = [
+                match
+                for match in candidates
+                if match.chunk.chunk_id in exact_focus_chunk_ids
+            ]
         candidates = [
             match
             for match in candidates
@@ -457,6 +531,7 @@ class Retriever:
             relevance_threshold=-1.0 if program_list_query else relevance_threshold,
             preferred_categories=set(self._topic_category_bonuses(intent_query)),
             program_list_query=program_list_query,
+            exact_compatibility_chunk_ids=exact_focus_chunk_ids,
         )
 
     @staticmethod
@@ -563,13 +638,18 @@ class Retriever:
         relevance_threshold: float,
         preferred_categories: set[str],
         program_list_query: bool = False,
+        exact_compatibility_chunk_ids: Optional[set[str]] = None,
     ) -> List[SearchResult]:
+        exact_compatibility_chunk_ids = exact_compatibility_chunk_ids or set()
         selected: List[SearchResult] = []
         source_counts: Counter[str] = Counter()
         seen_hashes = set()
         signatures: List[set[str]] = []
         for result in ranked:
-            if result.similarity_score < similarity_threshold:
+            if (
+                result.chunk.chunk_id not in exact_compatibility_chunk_ids
+                and result.similarity_score < similarity_threshold
+            ):
                 continue
             if result.relevance_score < relevance_threshold:
                 continue
@@ -671,6 +751,11 @@ class Retriever:
             and _STRUCTURED_DATA_PATTERN.search(lowered)
         ):
             bonus += 0.050
+        if category in {"scholarships", "waivers"}:
+            focus_tokens = _aid_focus_tokens(query)
+            if focus_tokens and _chunk_matches_aid_focus(chunk, focus_tokens):
+                focus_strength = _aid_focus_strength(chunk, focus_tokens)
+                bonus += min(0.070, 0.020 + 0.025 * (focus_strength - 1))
         return bonus
 
 
@@ -742,6 +827,58 @@ def _meaningful_tokens(text: str) -> set[str]:
         for token in _TOKEN_RE.findall(unicodedata.normalize("NFKC", text))
         if len(token) > 1
     }
+
+
+def _aid_focus_tokens(query: str) -> set[str]:
+    """Extract explicit aid-category qualifiers from normalized user wording."""
+
+    return _meaningful_tokens(query) - _AID_FOCUS_IGNORED_TOKENS
+
+
+def _chunk_matches_aid_focus(chunk: KnowledgeChunk, focus_tokens: set[str]) -> bool:
+    """Require verified aid evidence to contain every explicit focus token."""
+
+    searchable = "{} {} {}".format(
+        chunk.title,
+        chunk.program or "",
+        chunk.content,
+    )
+    if not focus_tokens <= _meaningful_tokens(searchable):
+        return False
+    content = chunk.content.strip()
+    content_tokens = [
+        token.casefold()
+        for token in _TOKEN_RE.findall(unicodedata.normalize("NFKC", content))
+    ]
+    # Text extraction may split immediately after the next subsection title,
+    # leaving a fragment such as ``c) Female Quota:`` at the end of the
+    # preceding chunk. A heading without any following row/value is navigation,
+    # not evidence for that qualifier. Structured table rows remain eligible.
+    if (
+        str(chunk.content_type).casefold() != "table"
+        and content.endswith(":")
+        and focus_tokens <= set(content_tokens[-4:])
+        and all(content_tokens.count(token) == 1 for token in focus_tokens)
+    ):
+        return False
+    folded = searchable.casefold()
+    # Overlapping text chunks can end with only the next section's heading.
+    # Do not treat a single qualifier at the very end as complete evidence.
+    return not all(
+        folded.count(token) == 1 and folded.find(token) >= len(folded) * 0.8
+        for token in focus_tokens
+    )
+
+
+def _aid_focus_strength(chunk: KnowledgeChunk, focus_tokens: set[str]) -> int:
+    """Measure repeated focus evidence, capped to avoid dominating authority."""
+
+    searchable = "{} {} {}".format(
+        chunk.title,
+        chunk.program or "",
+        chunk.content,
+    ).casefold()
+    return max(1, min(3, min(searchable.count(token) for token in focus_tokens)))
 
 
 def _base_query(query: str) -> str:

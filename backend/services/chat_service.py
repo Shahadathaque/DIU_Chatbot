@@ -233,6 +233,15 @@ def _latest_history_value(
 
 
 def _followup_topic(message: str) -> Optional[str]:
+    normalized_intent = analyze_query(
+        message, program_phrase=_matched_program_phrase(message)
+    ).intent
+    normalized_topic = {
+        QueryIntent.WAIVER: "waiver",
+        QueryIntent.SCHOLARSHIP: "scholarship",
+    }.get(normalized_intent)
+    if normalized_topic is not None:
+        return normalized_topic
     for pattern, topic in _FOLLOWUP_TOPICS:
         if pattern.search(message):
             return topic

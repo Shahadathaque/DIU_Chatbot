@@ -698,3 +698,14 @@ scope), record it here with a short reason._
   the actual Next.js 16 and React 19 peer ranges are satisfied. Verification passed
   with 31 frontend tests, TypeScript, ESLint, production build, and zero npm audit
   vulnerabilities.
+- **2026-08-23** — Financial-aid query resilience repaired locally. Added bounded
+  one-edit normalization for stable admission vocabulary, preserved explicit aid
+  qualifiers during canonical reformulation and follow-up resolution, and added a
+  strict category-scoped focus lane so specific waiver/scholarship evidence wins
+  over generic semantic matches. Incomplete overlapping subsection headings are
+  excluded from qualifier evidence. The configured pgvector audit resolves
+  `female waiver`, `female waever`, `scholership`, and `waiver` to compatible
+  verified DIU sources without changing global thresholds or admission facts.
+  Verification passed with 479 backend tests (41 integration tests deselected),
+  Python compilation, and clean diff validation. Production verification follows
+  the reviewed commit and deployment.

@@ -17,6 +17,31 @@ from rag.program_resolution import matched_program_phrase
 
 
 _SPACE_RE = re.compile(r"\s+")
+_ASCII_WORD_RE = re.compile(r"[A-Za-z]+")
+_DOMAIN_WORDS = frozenset(
+    {
+        "admission",
+        "admissions",
+        "application",
+        "applications",
+        "deadline",
+        "deadlines",
+        "document",
+        "documents",
+        "eligibility",
+        "eligible",
+        "international",
+        "program",
+        "programs",
+        "requirement",
+        "requirements",
+        "scholarship",
+        "scholarships",
+        "tuition",
+        "waiver",
+        "waivers",
+    }
+)
 
 
 class QueryIntent(str, Enum):
@@ -120,10 +145,66 @@ def analyze_query(query: str, *, program_phrase: Optional[str] = None) -> QueryA
 def _normalize(query: str) -> str:
     normalized = unicodedata.normalize("NFKC", query)
     normalized = normalized.replace("’", "'").replace("‘", "'")
+    normalized = _ASCII_WORD_RE.sub(_correct_domain_word, normalized)
     normalized = _SPACE_RE.sub(" ", normalized).strip()
     if not normalized:
         raise ValueError("query cannot be blank")
     return normalized
+
+
+def _correct_domain_word(match: re.Match[str]) -> str:
+    """Correct one-edit admission terms without broad fuzzy matching.
+
+    Restricting corrections to a small, stable intent vocabulary prevents an
+    unrelated word such as ``documentary`` from becoming ``document`` while
+    still accepting ordinary substitutions, missing letters, and adjacent
+    transpositions in words such as ``waiver`` and ``scholarship``.
+    """
+
+    word = match.group(0)
+    folded = word.casefold()
+    if folded in _DOMAIN_WORDS or len(folded) < 5:
+        return word
+    matches = [
+        candidate for candidate in _DOMAIN_WORDS if _is_one_edit(folded, candidate)
+    ]
+    return matches[0] if len(matches) == 1 else word
+
+
+def _is_one_edit(left: str, right: str) -> bool:
+    """Return whether two words differ by one Damerau-Levenshtein edit."""
+
+    if left == right:
+        return True
+    if abs(len(left) - len(right)) > 1:
+        return False
+    if len(left) == len(right):
+        differences = [
+            index
+            for index, pair in enumerate(zip(left, right))
+            if pair[0] != pair[1]
+        ]
+        if len(differences) == 1:
+            return True
+        return bool(
+            len(differences) == 2
+            and differences[1] == differences[0] + 1
+            and left[differences[0]] == right[differences[1]]
+            and left[differences[1]] == right[differences[0]]
+        )
+    shorter, longer = (left, right) if len(left) < len(right) else (right, left)
+    short_index = long_index = 0
+    skipped = False
+    while short_index < len(shorter) and long_index < len(longer):
+        if shorter[short_index] == longer[long_index]:
+            short_index += 1
+            long_index += 1
+            continue
+        if skipped:
+            return False
+        skipped = True
+        long_index += 1
+    return True
 
 
 def _language(query: str) -> str:
@@ -196,4 +277,14 @@ def _canonical_query(
         QueryIntent.INTERNATIONAL: "DIU international student admission policy tuition contact",
         QueryIntent.ADMISSION_OVERVIEW: "DIU official admission information overview",
     }.get(intent)
+    if canonical and intent in {QueryIntent.SCHOLARSHIP, QueryIntent.WAIVER}:
+        canonical = _preserve_user_focus(canonical, original)
     return _SPACE_RE.sub(" ", canonical or original).strip()
+
+
+def _preserve_user_focus(canonical: str, original: str) -> str:
+    """Keep a user's non-factual category qualifier in the retrieval query."""
+
+    if original.casefold() in canonical.casefold():
+        return canonical
+    return "{} user focus {}".format(canonical, original)

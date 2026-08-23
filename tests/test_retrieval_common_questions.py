@@ -31,6 +31,9 @@ class _IntentLaneEmbedder:
             "local bachelor program diploma",
             "tuition fees",
             "financial aid scholarships",
+            "official waiver policy",
+            "tuition fee waiver",
+            "waiver",
             "complete program catalog",
             "program eligibility verification",
         )
@@ -79,6 +82,12 @@ def _retriever() -> Retriever:
             category="scholarships",
         ),
         knowledge_chunk(
+            "female-waiver",
+            source_id="DIU-WAV-001",
+            content="Official waiver policy: Female Quota tuition fee waiver categories.",
+            category="waivers",
+        ),
+        knowledge_chunk(
             "program-catalog",
             source_id="DIU-PROG-001",
             content="DIU complete program catalog across all faculties.",
@@ -123,6 +132,10 @@ def _retriever() -> Retriever:
         ("এডমিশন ফি কত?", "DIU-FEE-001"),
         ("Tell me about scholarships", "DIU-SCH-001"),
         ("Which scholarship categories does DIU list?", "DIU-SCH-001"),
+        ("waiver", "DIU-WAV-001"),
+        ("female waiver", "DIU-WAV-001"),
+        ("female waever", "DIU-WAV-001"),
+        ("scholership", "DIU-SCH-001"),
         ("Show available programs", "DIU-PROG-001"),
         ("Show DIU's official program catalog", "DIU-PROG-001"),
         ("am i eligible for bsc in cse?", "DIU-PROG-001"),
