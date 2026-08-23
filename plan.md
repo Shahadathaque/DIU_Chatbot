@@ -18,7 +18,7 @@ early.
 | RAG chunking | Done — `rag/chunker.py`, integrity-checked manifest, tables + PDF pages |
 | Embeddings | Done — `intfloat/multilingual-e5-base` (768-d) via `rag/embeddings.py` |
 | Vector store | Done — pgvector (production) + JSON/in-memory (dev/test) |
-| Retrieval | **Final local SQA passed** — 84/84 admission variants, 51/51 adversarial query cases, 211/211 local tuition variants across 50 programs, and 45/45 international audience/currency checks pass; an earlier 21/21 primary-query run passed against the refreshed 317-chunk pgvector index, while the expanded live audit is pending an environment with database network access |
+| Retrieval | **Final local and hosted SQA passed** — 84/84 admission variants, 60/60 adversarial query cases, 211/211 local tuition variants across 50 programs, 45/45 international audience/currency checks, and 25/25 faculty-catalog variants across all 7 faculties and 52 programs pass; the expanded 84-query and complete-faculty audits also pass against the hosted 317-chunk pgvector index |
 | Backend API | **TASK-01 done** — `/api/chat`, `/api/programs`, `/api/sources` live against the existing retriever + local KB; `/api/eligibility` was contract-only until TASK-03 |
 | LLM generation | **TASK-02 + TASK-DEMO done** — grounded Qwen generation; deterministic rendering protects tuition-table labels and SSC/HSC waiver rows from small-model unit/column errors |
 | Eligibility engine | **TASK-03 done** — `eligibility/` deterministic rule engine (R-001 program registry, R-002 diploma pathway); `POST /api/eligibility` live; returns `insufficient_information` where official evidence cannot establish eligibility |
@@ -58,18 +58,20 @@ early.
 
 ### Current
 
-The final admission-information SQA task is implemented and locally verified.
-All 24 official sources were previously recollected and validated and 317 chunks
-were published atomically. The expanded deterministic audit passes 84/84
-natural-language variants across all 21 sections; the adversarial audit passes
-51/51 cases; the cleaned local tuition audit passes 211/211 query variants across
-50/50 programs; and the international audience audit passes 45/45 checks across
-all nine USD table rows. Standard verification passes 595 backend tests and 36 frontend tests plus Python
+The final admission-information SQA task is implemented and verified locally and
+against the hosted pgvector index. All 24 official sources were previously
+recollected and validated and 317 chunks were published atomically. The expanded
+admission audit passes 84/84 natural-language variants across all 21 sections;
+the adversarial audit passes 60/60 cases; the cleaned local tuition audit passes
+211/211 variants across 50/50 programs; and the international audience audit
+passes 45/45 checks across all nine USD rows. The faculty-catalog audit derives
+expectations from all 52 cleaned program rows and passes 25/25 variants across
+all 7 faculties both locally and against the hosted database. Standard
+verification passes the complete backend and frontend suites plus Python
 compilation, lint, TypeScript, and production build. The private held-out research
 evaluation artifact is absent locally, so its 41 artifact-dependent integrations
-remain intentionally skipped. The expanded live pgvector audit was attempted but
-could not reach PostgreSQL from the sandbox. Repository code changes have not
-been committed or deployed.
+remain intentionally skipped. The current faculty-resolution repair is ready for
+reviewed commit and deployment.
 
 ### Next
 
@@ -782,3 +784,13 @@ scope), record it here with a short reason._
   Management; ambiguous fragments are not guessed. Verification passed with 600
   backend tests, 36 frontend tests, 84/84 live admission-retrieval variants,
   52/52 query-quality cases, and 211/211 tuition queries across 50 programs.
+- **2026-08-24** — Bare faculty catalog resolution repaired generically. A shared
+  conservative resolver now runs before the admission gate, normalizes harmless
+  faculty-name variants, gives exact faculty wording precedence over colliding
+  partial program aliases, scopes canonical search and source metadata to the
+  requested faculty, and leaves program-specific queries such as Civil
+  Engineering and Information Technology unchanged. Added a cleaned-table-driven
+  complete faculty audit. Verification passed with 84/84 hosted admission
+  variants, 60/60 adversarial cases, 211/211 tuition variants, and 25/25 faculty
+  catalog variants covering all 7 faculties and all 52 cleaned program rows in
+  both deterministic and configured hosted-retrieval modes.

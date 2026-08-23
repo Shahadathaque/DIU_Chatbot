@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from rag.faculty_resolution import matched_faculty_phrase
 from rag.query_processing import QueryIntent, analyze_query, tuition_audience
 
 
@@ -67,6 +68,51 @@ def test_faculty_department_query_uses_program_catalog_intent() -> None:
 
     assert analysis.intent is QueryIntent.PROGRAM_CATALOG
     assert analysis.is_admission_query
+
+
+@pytest.mark.parametrize(
+    ("query", "faculty"),
+    [
+        ("Agriculture Sciences", "Agriculture Sciences"),
+        ("Business and Entrepreneurship", "Business & Entrepreneurship"),
+        ("Engineering", "Engineering"),
+        ("Graduate Studies", "Graduate Studies"),
+        ("Health & Life Sciences", "Health and Life Sciences"),
+        ("Humanities and Social Sciences", "Humanities & Social Sciences"),
+        (
+            "Science & Information Technology",
+            "Science and Information Technology",
+        ),
+        ("Which programs are in Graduate Studies?", "Graduate Studies"),
+        ("Show programs from the Faculty of Engineering", "Engineering"),
+    ],
+)
+def test_catalog_faculty_names_route_to_scoped_program_catalog(
+    query: str, faculty: str
+) -> None:
+    analysis = analyze_query(query)
+
+    assert matched_faculty_phrase(query) == faculty
+    assert analysis.intent is QueryIntent.PROGRAM_CATALOG
+    assert analysis.is_admission_query
+    assert faculty.casefold() in analysis.retrieval_query.casefold()
+
+
+@pytest.mark.parametrize(
+    ("query", "program"),
+    [
+        ("Civil Engineering", "Civil Engineering"),
+        ("Information Technology", "Information Technology & Management"),
+    ],
+)
+def test_program_subject_is_not_broadened_to_a_faculty(
+    query: str, program: str
+) -> None:
+    analysis = analyze_query(query)
+
+    assert matched_faculty_phrase(query) is None
+    assert analysis.intent is QueryIntent.PROGRAM_INFO
+    assert program.casefold() in analysis.retrieval_query.casefold()
 
 
 def test_typo_correction_does_not_turn_unrelated_words_into_admission_terms() -> None:

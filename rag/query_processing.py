@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Optional
 
+from rag.faculty_resolution import matched_faculty_phrase
 from rag.program_resolution import matched_program_phrase
 
 
@@ -273,19 +274,31 @@ def analyze_query(query: str, *, program_phrase: Optional[str] = None) -> QueryA
     """Normalize, classify, and safely reformulate one user question."""
 
     normalized = _normalize(query)
-    detected_program = program_phrase or _program_phrase(normalized)
+    detected_faculty = matched_faculty_phrase(normalized)
+    # Exact faculty wording is stronger than a partial program-name fragment.
+    # For example, Agriculture Sciences is a faculty while Agricultural
+    # Science is also a program; the bare official faculty label must route to
+    # the catalog rather than the similarly named program.
+    detected_program = (
+        None
+        if detected_faculty
+        else (program_phrase or _program_phrase(normalized))
+    )
     language = _language(normalized)
     if _UNSUPPORTED_PATTERN.search(normalized):
         return QueryAnalysis(query, normalized, normalized, None, language, False)
 
-    intent = _intent(normalized, detected_program)
+    intent = _intent(normalized, detected_program, detected_faculty)
     is_admission = bool(
         intent is not None
         or detected_program
+        or detected_faculty
         or _ADMISSION_PATTERN.search(normalized)
         or _DOMAIN_ANCHOR_PATTERN.search(normalized)
     )
-    retrieval_query = _canonical_query(intent, detected_program, normalized)
+    retrieval_query = _canonical_query(
+        intent, detected_program, normalized, faculty_phrase=detected_faculty
+    )
     return QueryAnalysis(
         original_query=query,
         normalized_query=normalized,
@@ -383,7 +396,11 @@ def _program_phrase(query: str) -> Optional[str]:
     return matched_program_phrase(query)
 
 
-def _intent(query: str, program_phrase: Optional[str]) -> Optional[QueryIntent]:
+def _intent(
+    query: str,
+    program_phrase: Optional[str],
+    faculty_phrase: Optional[str] = None,
+) -> Optional[QueryIntent]:
     if _ADMISSION_TEST_SEAT_PLAN_PATTERN.search(query):
         return QueryIntent.ADMISSION_TEST_SEAT_PLAN
     if _ADMISSION_TEST_RESULT_PATTERN.search(query):
@@ -448,7 +465,7 @@ def _intent(query: str, program_phrase: Optional[str]) -> Optional[QueryIntent]:
         return QueryIntent.APPLICATION_PROCESS
     if _CONTACT_PATTERN.search(query):
         return QueryIntent.CONTACT
-    if _PROGRAM_LIST_PATTERN.search(query) or (
+    if faculty_phrase or _PROGRAM_LIST_PATTERN.search(query) or (
         program_phrase is None and _FACULTY_CATALOG_PATTERN.search(query)
     ):
         return QueryIntent.PROGRAM_CATALOG
@@ -462,7 +479,11 @@ def _intent(query: str, program_phrase: Optional[str]) -> Optional[QueryIntent]:
 
 
 def _canonical_query(
-    intent: Optional[QueryIntent], program_phrase: Optional[str], original: str
+    intent: Optional[QueryIntent],
+    program_phrase: Optional[str],
+    original: str,
+    *,
+    faculty_phrase: Optional[str] = None,
 ) -> str:
     program = " {}".format(program_phrase) if program_phrase else ""
     audience = tuition_audience(original)
@@ -487,7 +508,13 @@ def _canonical_query(
         QueryIntent.TUITION: tuition_query,
         QueryIntent.SCHOLARSHIP: "DIU financial aid scholarships local students scholarship categories",
         QueryIntent.WAIVER: "DIU official waiver policy tuition fee waiver categories{}".format(program),
-        QueryIntent.PROGRAM_CATALOG: "DIU complete program catalog across all faculties programs offered",
+        QueryIntent.PROGRAM_CATALOG: (
+            "DIU official program catalog {} faculty programs offered".format(
+                faculty_phrase
+            )
+            if faculty_phrase
+            else "DIU complete program catalog across all faculties programs offered"
+        ),
         QueryIntent.PROGRAM_INFO: "DIU official program catalog{} program details".format(program),
         QueryIntent.ELIGIBILITY: "DIU{} program eligibility verification official program catalog".format(program),
         QueryIntent.DEADLINE: "DIU current admission notice application deadline last date",

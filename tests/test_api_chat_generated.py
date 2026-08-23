@@ -201,6 +201,34 @@ def test_program_list_uses_complete_structured_rows_without_generator_omission()
     _reset_overrides()
 
 
+def test_bare_faculty_name_returns_its_structured_program_catalog() -> None:
+    query = "Graduate Studies"
+    names = ["Master of Development Studies (MDS)", "Master of Law (LL.M.)"]
+    retriever = _FakeRetriever(
+        {
+            query: [
+                _program_result(f"graduate-{index}", name, "Graduate Studies")
+                for index, name in enumerate(names)
+            ]
+        }
+    )
+    generator = _FakeGenerator("The generator must not rewrite catalog rows.")
+    client = _client(retriever, generator)
+
+    response = client.post(
+        "/api/chat", json={"message": query, "language": "en"}
+    )
+
+    assert response.status_code == 200
+    assert retriever.top_ks == [60]
+    assert generator.calls == []
+    body = response.json()
+    assert "Graduate Studies programs" in body["answer"]
+    assert all(name in body["answer"] for name in names)
+    assert body["sources"]
+    _reset_overrides()
+
+
 def test_generator_receives_grounded_evidence() -> None:
     retriever = _FakeRetriever(
         {

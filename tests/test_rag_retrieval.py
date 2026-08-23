@@ -853,6 +853,79 @@ def test_faculty_acronym_department_query_filters_catalog_rows() -> None:
     assert [result.chunk.chunk_id for result in results] == ["cse-program"]
 
 
+@pytest.mark.parametrize(
+    ("query", "expected_ids"),
+    [
+        ("Agriculture Sciences", {"agriculture-program"}),
+        ("Business & Entrepreneurship", {"business-program"}),
+        ("Engineering", {"engineering-program"}),
+        (
+            "Graduate Studies",
+            {"development-studies-program", "graduate-law-program"},
+        ),
+        ("Health and Life Sciences", {"health-program"}),
+        ("Humanities & Social Sciences", {"humanities-program"}),
+        ("Science and Information Technology", {"fsit-program"}),
+        (
+            "Which programs are in Graduate Studies?",
+            {"development-studies-program", "graduate-law-program"},
+        ),
+    ],
+)
+def test_bare_and_natural_faculty_queries_filter_every_catalog_faculty(
+    query: str, expected_ids: set[str]
+) -> None:
+    rows = [
+        ("agriculture-program", "B.Sc. in Agricultural Science", "Agriculture Sciences"),
+        (
+            "business-program",
+            "Bachelor of Business Administration",
+            "Business & Entrepreneurship",
+        ),
+        ("engineering-program", "B.Sc. in Civil Engineering", "Engineering"),
+        (
+            "development-studies-program",
+            "Master of Development Studies",
+            "Graduate Studies",
+        ),
+        ("graduate-law-program", "Master of Law", "Graduate Studies"),
+        ("health-program", "Bachelor of Pharmacy", "Health and Life Sciences"),
+        (
+            "humanities-program",
+            "B.A. in English",
+            "Humanities & Social Sciences",
+        ),
+        (
+            "fsit-program",
+            "B.Sc. in Computer Science and Engineering",
+            "Science and Information Technology",
+        ),
+    ]
+    chunks = [
+        replace(
+            replace(
+                knowledge_chunk(
+                    chunk_id,
+                    source_id="DIU-PROG-001",
+                    content=f"{program} | {faculty}",
+                    category="undergraduate_programs",
+                    program=program,
+                ),
+                faculty=faculty,
+            ),
+            content_type="table",
+        )
+        for chunk_id, program, faculty in rows
+    ]
+    store = _store()
+    store.upsert_chunks(chunks, [[1.0, 0.0] for _chunk in chunks])
+    retriever = Retriever(FakeEmbedder(), store, max_results_per_source=10)
+
+    results = retriever.retrieve(query, top_k=10)
+
+    assert {result.chunk.chunk_id for result in results} == expected_ids
+
+
 def test_bdt_tuition_query_excludes_usd_and_program_catalog_evidence() -> None:
     """Explicit BDT requests must return only matching local fee evidence."""
 

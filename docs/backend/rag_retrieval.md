@@ -139,6 +139,16 @@ program grid from being presented as proof. If the claim is present in an
 official source, the assistant may answer it from that source; otherwise it
 returns insufficient information.
 
+Faculty catalog requests use a shared conservative resolver before the
+admission-domain gate. Bare official faculty names and natural discovery wording
+such as “Graduate Studies” or “Which programs are in Graduate Studies?” route to
+the scoped program catalog. Harmless `and`/`&`, punctuation, capitalization, and
+faculty/department wrappers are normalized. Exact faculty wording also outranks
+similarly named partial programs (for example Agriculture Sciences versus
+Agricultural Science), while program names such as Civil Engineering and
+Information Technology remain program-specific. Runtime source metadata remains
+the fallback for future faculty labels that are not yet represented by an alias.
+
 Specific intents are resolved before broad ones. In particular, deadlines beat
 generic application wording, international scholarships remain distinct from
 local scholarships and financial aid, and payment instructions remain distinct
@@ -204,6 +214,13 @@ compatible rows without currency conversion.
 short-query, intent-conflict, audience, follow-up, unsupported-claim, and
 multi-program cases. Each failure prints the query, expected resolution, and
 actual resolution instead of reducing a quality problem to a single aggregate.
+
+`scripts/audit_faculty_catalog_retrieval.py` derives every faculty and expected
+program from the cleaned official program table, then tests bare names,
+conjunction variants, and natural catalog wording. Its default deliberately
+uninformative embeddings prove that exact faculty metadata—not semantic luck—
+selects every row. Pass `--retrieval` to repeat the same complete-faculty audit
+against the configured hosted embedding provider and pgvector index.
 
 ## Program compatibility and multi-program tuition
 

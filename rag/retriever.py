@@ -10,6 +10,7 @@ from typing import Any, Iterable, List, Optional, Sequence
 
 from rag.config import RagSettings, get_rag_settings
 from rag.embeddings import Embedder, create_embedder
+from rag.faculty_resolution import faculty_names_match, matched_faculty_phrase
 from rag.models import KnowledgeChunk, SearchFilters, SearchResult, VectorMatch
 from rag.program_resolution import (
     PROGRAM_BY_MARKER,
@@ -459,7 +460,11 @@ class Retriever:
         # text may omit it for document/application intents, but the dedicated
         # program lane must still remain available for precise evidence.
         program_phrase = program_phrase or _matched_program_phrase(normalized)
-        if program_phrase is None and program_list_query:
+        if program_list_query:
+            # Catalog/faculty intent outranks partial program aliases discovered
+            # from the same words (for example Business & Entrepreneurship
+            # versus Bachelor of Entrepreneurship). Do not let that stale
+            # pre-analysis program phrase filter out the requested faculty.
             program_phrase = _PROGRAM_CATALOG_QUERY
         if program_phrase is not None:
             phrase_embedding = self.embedder.embed_query(program_phrase)
@@ -501,14 +506,16 @@ class Retriever:
                     filters=SearchFilters(category=category, program=program),
                 )
                 candidates = self._merge_candidates(focus_candidates, candidates)
-            named_faculty = _matched_catalog_faculty(intent_query, candidates)
+        named_faculty = (
+            matched_faculty_phrase(intent_query)
+            or _matched_catalog_faculty(intent_query, candidates)
+        )
         if named_faculty is not None:
             candidates = [
                 match
                 for match in candidates
                 if match.chunk.content_type.casefold() == "table"
-                and str(match.chunk.faculty or "").casefold()
-                == named_faculty.casefold()
+                and faculty_names_match(str(match.chunk.faculty or ""), named_faculty)
             ]
         elif program_list_query:
             catalog_candidates = [
@@ -669,6 +676,8 @@ class Retriever:
         relevance threshold instead of replacing the named program's evidence.
         """
 
+        if matched_faculty_phrase(query) is not None:
+            return 0.0
         acronym = _single_named_program_acronym(query)
         if acronym is None:
             return 0.0
@@ -1237,6 +1246,16 @@ def _evidence_matches_query_context(
         program = str(chunk.program or "")
         return bool(program) and program_matches(program)
 
+    if intent == "program_catalog":
+        if category != "undergraduate_programs":
+            return False
+        faculty_phrase = matched_faculty_phrase(query)
+        if faculty_phrase is None:
+            return True
+        return bool(chunk.faculty) and faculty_names_match(
+            str(chunk.faculty), faculty_phrase
+        )
+
     if intent == "contact":
         return category == "admission_contact_information"
 
@@ -1299,6 +1318,7 @@ def _fact_intent(query: str) -> Optional[str]:
         QueryIntent.DIPLOMA_APPLICATION: "diploma_application",
         QueryIntent.ELIGIBILITY: "eligibility",
         QueryIntent.PROGRAM_INFO: "program_info",
+        QueryIntent.PROGRAM_CATALOG: "program_catalog",
         QueryIntent.DEADLINE: "deadline",
         QueryIntent.CONTACT: "contact",
         QueryIntent.INTERNATIONAL: "international",
