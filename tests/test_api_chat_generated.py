@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 
 from backend.api.chat import get_chat_service
 from backend.main import app
-from backend.services.chat_service import ChatService
+from backend.services.chat_service import ChatService, build_grounded_messages
 from rag.generator import GeneratorUnavailableError
 from tests.rag_helpers import knowledge_chunk
 
@@ -120,6 +120,22 @@ def test_generated_chat_returns_grounded_answer_and_sources() -> None:
     assert body["sources"][0]["url"].startswith("https://")
     assert len(generator.calls) == 1
     _reset_overrides()
+
+
+def test_grounding_prompt_preserves_explicit_scope_constraints() -> None:
+    result = _evidence_result(
+        "general-schedule",
+        content="General DIU admission test date: August 28, 2026.",
+        relevance=0.93,
+    )
+
+    messages = build_grounded_messages(
+        "When is the FSIT admission test?", "en", [result]
+    )
+
+    system_prompt = messages[0]["content"]
+    assert "explicit faculty" in system_prompt
+    assert "Do not attach a general date" in system_prompt
 
 
 def test_eligibility_question_uses_deterministic_checker_guidance() -> None:
@@ -306,6 +322,110 @@ def test_generator_not_called_for_insufficient_evidence() -> None:
     _reset_overrides()
 
 
+def test_unsupported_program_claim_returns_insufficient_without_catalog_answer() -> None:
+    query = "All Students of Undergraduate Program Will Get a Laptop Free."
+    retriever = _FakeRetriever({})
+    generator = _FakeGenerator("Invented laptop policy")
+    client = _client(retriever, generator)
+
+    response = client.post(
+        "/api/chat", json={"message": query, "language": "en"}
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert "enough verified information" in body["answer"]
+    assert body["sources"] == []
+    assert generator.calls == []
+    _reset_overrides()
+
+
+def test_universal_scholarship_claim_is_not_rewritten_as_a_scholarship_list() -> None:
+    query = "Is every student guaranteed a scholarship?"
+    retriever = _FakeRetriever(
+        {
+            query: [
+                _evidence_result(
+                    "scholarship-list",
+                    content="Browse by Section\nDIU Scholarship\nSee More",
+                    relevance=0.93,
+                )
+            ]
+        }
+    )
+    generator = _FakeGenerator(
+        "The supplied evidence does not establish that guarantee."
+    )
+    client = _client(retriever, generator)
+
+    response = client.post(
+        "/api/chat", json={"message": query, "language": "en"}
+    )
+
+    assert response.status_code == 200
+    assert response.json()["answer"] == (
+        "The supplied evidence does not establish that guarantee."
+    )
+    assert len(generator.calls) == 1
+    _reset_overrides()
+
+
+def test_financial_aid_does_not_use_local_scholarship_list_formatter() -> None:
+    query = "Financial Aid & Scholarships"
+    result = _evidence_result(
+        "financial-aid",
+        content=(
+            "Browse by Section\nDIU Scholarship\nSee More\n"
+            "Verified financial-aid guidance."
+        ),
+        relevance=0.93,
+    )
+    result.chunk = replace(result.chunk, category="financial_aid")
+    retriever = _FakeRetriever({query: [result]})
+    generator = _FakeGenerator("Grounded financial-aid answer.")
+    client = _client(retriever, generator)
+
+    response = client.post(
+        "/api/chat", json={"message": query, "language": "en"}
+    )
+
+    assert response.status_code == 200
+    assert response.json()["answer"] == "Grounded financial-aid answer."
+    assert len(generator.calls) == 1
+    _reset_overrides()
+
+
+def test_partial_only_official_page_returns_link_without_generation() -> None:
+    query = "Life insurance"
+    partial = _Result(
+        knowledge_chunk(
+            "life-insurance-page",
+            source_id="DIU-INS-001",
+            content="Life Insurance for Student and Guardian",
+            category="life_insurance",
+            extraction_status="partial",
+        ),
+        0.8,
+    )
+    retriever = _FakeRetriever({query: [partial]})
+    generator = _FakeGenerator(answer="Invented insurance details")
+    client = _client(retriever, generator)
+
+    response = client.post(
+        "/api/chat", json={"message": query, "language": "en"}
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["confidence"] == "low"
+    assert "enough verified information" in body["answer"]
+    assert [source["title"] for source in body["sources"]] == [
+        "DIU source life-insurance-page"
+    ]
+    assert generator.calls == []
+    _reset_overrides()
+
+
 def test_generator_bangla_query_uses_bangla_language_prompt() -> None:
     retriever = _FakeRetriever(
         {
@@ -451,6 +571,59 @@ def test_structured_tuition_answer_preserves_table_labels_and_units() -> None:
     _reset_overrides()
 
 
+def test_structured_tuition_comparison_renders_local_and_international_rows() -> None:
+    query = "Compare local and international CSE tuition fees"
+    program = "B. Sc. in Computer Science and Engineering"
+    local = _evidence_result(
+        "cse-local-comparison",
+        content=(
+            "Tuition Fees for Local Students\n"
+            "Full Program Name | Payable During Admission | Total Tuition Fees | "
+            "Total Program Fees\n"
+            f"{program} | 61,750 | 782,250 | 1,020,450"
+        ),
+        relevance=0.96,
+    )
+    local.chunk = replace(
+        local.chunk,
+        category="tuition_and_fees",
+        content_type="table",
+        program=program,
+    )
+    international = _evidence_result(
+        "cse-international-comparison",
+        content=(
+            "Tuition Fees for International Students\n"
+            "Full Program Name | 1st Yr During Admission | Total Tuition Fees | "
+            "Total Program Fees\n"
+            f"{program} | $ 2476 | $ 7,847 | $ 10,250"
+        ),
+        relevance=0.95,
+    )
+    international.chunk = replace(
+        international.chunk,
+        category="international_admission",
+        content_type="table",
+        program=program,
+    )
+    retriever = _FakeRetriever({query: [local, international]})
+    generator = _FakeGenerator(answer="Incorrectly merges the currencies.")
+    client = _client(retriever, generator)
+
+    response = client.post("/api/chat", json={"message": query, "language": "en"})
+
+    assert response.status_code == 200
+    answer = response.json()["answer"]
+    assert "local students" in answer
+    assert "international students" in answer
+    assert "BDT 782,250" in answer
+    assert "USD 7,847" in answer
+    assert "USD 10,250" in answer
+    assert "BDT 7,847" not in answer
+    assert generator.calls == []
+    _reset_overrides()
+
+
 def test_structured_tuition_selects_canonical_row_among_secondary_results() -> None:
     query = "Development Studies tuition fees"
     fee_headers = (
@@ -544,6 +717,53 @@ def test_explicit_postgraduate_tuition_never_uses_undergraduate_row() -> None:
     assert "M. A in English" in answer
     assert "BDT 333" in answer
     assert "B.A. (Hons)" not in answer
+    assert generator.calls == []
+    _reset_overrides()
+
+
+def test_multiple_program_tuition_rows_are_rendered_without_model_omission() -> None:
+    query = "CSE and Master of Pharmacy tuition fees"
+    headers = "Full Program Name | Total Tuition Fees | Total Program Fees"
+    cse = _evidence_result(
+        "cse-fee",
+        content=(
+            "Tuition Fees for Local Students\n"
+            f"{headers}\nB. Sc. in Computer Science and Engineering | 111 | 222"
+        ),
+        relevance=0.96,
+    )
+    cse.chunk = replace(
+        cse.chunk,
+        category="tuition_and_fees",
+        content_type="table",
+        program="B. Sc. in Computer Science and Engineering",
+    )
+    mpharm = _evidence_result(
+        "mpharm-fee",
+        content=(
+            "Tuition Fees for Local Students\n"
+            f"{headers}\nMaster of Pharmacy | 333 | 444"
+        ),
+        relevance=0.94,
+    )
+    mpharm.chunk = replace(
+        mpharm.chunk,
+        category="tuition_and_fees",
+        content_type="table",
+        program="Master of Pharmacy",
+    )
+    retriever = _FakeRetriever({query: [cse, mpharm]})
+    generator = _FakeGenerator(answer="Only one program was described.")
+    client = _client(retriever, generator)
+
+    response = client.post("/api/chat", json={"message": query, "language": "en"})
+
+    assert response.status_code == 200
+    answer = response.json()["answer"]
+    assert "B. Sc. in Computer Science and Engineering" in answer
+    assert "BDT 111" in answer
+    assert "Master of Pharmacy" in answer
+    assert "BDT 333" in answer
     assert generator.calls == []
     _reset_overrides()
 

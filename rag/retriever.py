@@ -24,7 +24,7 @@ from rag.program_resolution import (
     program_search_phrase,
     single_named_program_marker,
 )
-from rag.query_processing import QueryIntent, analyze_query
+from rag.query_processing import QueryIntent, analyze_query, tuition_audience
 from rag.vector_store import VectorStore, create_vector_store
 
 
@@ -61,17 +61,11 @@ _DOMAIN_TERM_PATTERN = re.compile(
     r"(?i)(?:\b(?:admissions?|admit|apply\w*|programs?|courses?|degrees?|"
     r"documents?|certificates?|transcripts?|gpas?|tuition|fees?|costs?|"
     r"scholarships?|waivers?|financial\s+aid|international\s+students?|"
+    r"seat\s+plans?|admission\s+test|credit\s+transfer|guardians?|"
+    r"payment\s+guidelines?|life\s+insurance|"
     r"eligibility|eligible|deadlines?|requirements?|contacts?|campus|semesters?|"
     r"vorti|bhorti)\b|ভর্তি|আবেদন|ডকুমেন্ট|কাগজপত্র|কাগজ|টিউশন|ফি|খরচ|"
     r"বৃত্তি|স্কলারশিপ|ওয়েভার|ওয়েভার|প্রোগ্রাম|কোর্স|যোগাযোগ)"
-)
-_PROGRAM_LIST_PATTERN = re.compile(
-    r"(?i)(?:"
-    r"\b(?:what|which)\b(?!\s+faculty\b).*\b(?:programs?|courses?|degrees?)\b"
-    r"|\b(?:list|show|name|all)\b.*\b(?:programs?|courses?|degrees?)\b"
-    r"|\b(?:programs?|courses?|degrees?)\b.*\b(?:available|offered)\b"
-    r"|\bprogram\b.*\b(?:ache|gulo|ki)\b"
-    r"|প্রোগ্রাম|কোর্স)"
 )
 _STRUCTURED_DATA_PATTERN = re.compile(
     r"(?i)(?:\b(?:waivers?|scholarships?|tuition|fees?|cost|rates?|gpas?|"
@@ -133,6 +127,29 @@ _AID_FOCUS_IGNORED_TOKENS = {
     "waivers",
     "what",
     "which",
+}
+_CLAIM_FOCUS_IGNORED_TOKENS = {
+    "about", "admission", "admissions", "all", "an", "and", "any", "are",
+    "can", "course", "courses", "daffodil", "did", "diu", "do", "does",
+    "every", "for", "from", "get", "gets", "give", "gives", "has", "have",
+    "in", "information", "is", "it", "me", "of", "official", "on", "program",
+    "programs", "student", "students", "tell", "that", "the", "their", "there",
+    "to", "undergraduate", "undergraduates", "university", "what", "which", "will",
+    "with", "would", "প্রোগ্রাম", "কোর্স", "ভর্তি", "শিক্ষার্থী",
+}
+_SCOPE_FOCUS_IGNORED_TOKENS = {
+    "admission", "admissions", "and", "apply", "are", "at", "bhorti", "can",
+    "date", "deadline", "diu", "do", "does", "faculty", "find", "for", "i",
+    "information", "is", "kobe", "last", "my", "of", "official", "plan",
+    "porikkha", "result", "results", "schedule", "seat", "test", "the", "time",
+    "to", "vorti", "we", "when", "where", "you", "কবে", "তারিখ", "পরীক্ষা",
+    "পরীক্ষার", "ফলাফল", "ভর্তি", "সময়সূচি", "সিট", "প্ল্যান",
+}
+_SCOPED_CURRENT_INTENTS = {
+    QueryIntent.ADMISSION_TEST_SCHEDULE,
+    QueryIntent.ADMISSION_TEST_SEAT_PLAN,
+    QueryIntent.ADMISSION_TEST_RESULT,
+    QueryIntent.DEADLINE,
 }
 def _matched_program_phrase(query: str) -> Optional[str]:
     """Return the official program phrase named by a program-related query."""
@@ -286,10 +303,7 @@ class Retriever:
         if not analysis.is_admission_query:
             return []
         intent_query = analysis.normalized_query
-        program_list_query = bool(
-            analysis.intent is QueryIntent.PROGRAM_CATALOG
-            or _PROGRAM_LIST_PATTERN.search(intent_query)
-        )
+        program_list_query = analysis.intent is QueryIntent.PROGRAM_CATALOG
         normalized = analysis.retrieval_query
         query_embedding = self.embedder.embed_query(normalized)
         filters = SearchFilters(
@@ -325,6 +339,48 @@ class Retriever:
             )
         else:
             candidates = authoritative_candidates
+        exact_topic_chunk_ids: set[str] = set()
+        exact_topic_category = _exact_topic_category(analysis.intent)
+        if exact_topic_category is not None and (
+            category is None or category.casefold() == exact_topic_category
+        ):
+            # An explicit, one-to-one topic is stronger than generic semantic
+            # similarity. Search its registered category directly so a small
+            # official page cannot be crowded out by longer, broadly similar
+            # admission pages. ``partial`` is allowed only in this exact lane:
+            # title-only captures provide the verified official destination
+            # needed for an honest "current information unavailable" answer.
+            exact_topic_candidates = self.vector_store.search(
+                query_embedding,
+                top_k=candidate_limit,
+                filters=SearchFilters(
+                    category=exact_topic_category,
+                    program=program,
+                    include_historical=include_historical,
+                    include_uncertain=include_uncertain,
+                    include_manual_review=include_manual_review,
+                    include_partial=True,
+                ),
+            )
+            candidates = self._merge_candidates(exact_topic_candidates, candidates)
+            exact_topic_chunk_ids = {
+                match.chunk.chunk_id for match in exact_topic_candidates
+            }
+        scope_tokens = (
+            _scope_focus_tokens(intent_query)
+            if analysis.intent in _SCOPED_CURRENT_INTENTS
+            else set()
+        )
+        if scope_tokens:
+            # Preserve explicit faculty, semester, year, or program qualifiers
+            # that the canonical topic query intentionally omits.
+            scoped_embedding = self.embedder.embed_query(intent_query)
+            scoped_candidates = self.vector_store.search(
+                scoped_embedding,
+                top_k=candidate_limit,
+                filters=filters,
+            )
+            candidates = self._merge_candidates(scoped_candidates, candidates)
         exact_focus_chunk_ids: set[str] = set()
         if (
             program_phrase is None
@@ -403,7 +459,7 @@ class Retriever:
         # text may omit it for document/application intents, but the dedicated
         # program lane must still remain available for precise evidence.
         program_phrase = program_phrase or _matched_program_phrase(normalized)
-        if program_phrase is None and _PROGRAM_LIST_PATTERN.search(normalized):
+        if program_phrase is None and program_list_query:
             program_phrase = _PROGRAM_CATALOG_QUERY
         if program_phrase is not None:
             phrase_embedding = self.embedder.embed_query(program_phrase)
@@ -532,6 +588,7 @@ class Retriever:
             preferred_categories=set(self._topic_category_bonuses(intent_query)),
             program_list_query=program_list_query,
             exact_compatibility_chunk_ids=exact_focus_chunk_ids,
+            threshold_exempt_chunk_ids=exact_topic_chunk_ids,
         )
 
     @staticmethod
@@ -639,8 +696,10 @@ class Retriever:
         preferred_categories: set[str],
         program_list_query: bool = False,
         exact_compatibility_chunk_ids: Optional[set[str]] = None,
+        threshold_exempt_chunk_ids: Optional[set[str]] = None,
     ) -> List[SearchResult]:
         exact_compatibility_chunk_ids = exact_compatibility_chunk_ids or set()
+        threshold_exempt_chunk_ids = threshold_exempt_chunk_ids or set()
         selected: List[SearchResult] = []
         source_counts: Counter[str] = Counter()
         seen_hashes = set()
@@ -648,10 +707,14 @@ class Retriever:
         for result in ranked:
             if (
                 result.chunk.chunk_id not in exact_compatibility_chunk_ids
+                and result.chunk.chunk_id not in threshold_exempt_chunk_ids
                 and result.similarity_score < similarity_threshold
             ):
                 continue
-            if result.relevance_score < relevance_threshold:
+            if (
+                result.chunk.chunk_id not in threshold_exempt_chunk_ids
+                and result.relevance_score < relevance_threshold
+            ):
                 continue
             chunk = result.chunk
             if chunk.content_hash in seen_hashes:
@@ -714,11 +777,38 @@ class Retriever:
             if re.search(r"international|বিদেশ", lowered):
                 bonuses["international_admission"] = 0.065
         if re.search(r"\bscholarships?\b|বৃত্তি|স্কলারশিপ", lowered):
-            bonuses["scholarships"] = 0.070
+            if re.search(r"international|foreign|বিদেশ", lowered):
+                bonuses["international_scholarships"] = 0.090
+            else:
+                bonuses["scholarships"] = 0.070
+        if re.search(r"\bfinancial\s+(?:aid|support|assistance)\b|আর্থিক", lowered):
+            bonuses["financial_aid"] = 0.090
         if re.search(r"\bwaivers?\b|ওয়েভার|ওয়েভার", lowered):
             bonuses["waivers"] = 0.070
+        if re.search(r"\b(?:waiver|tuition\s+fee)\s+calculator\b|ক্যালকুলেটর", lowered):
+            bonuses["waiver_calculator"] = 0.100
+        if re.search(r"\badmission\s+test\s+(?:schedule|date|time)\b|সময়সূচি|তারিখ", lowered):
+            bonuses["admission_overview"] = 0.080
+            bonuses["admission_notices"] = 0.060
+        if re.search(r"\b(?:admission\s+test\s+)?seat\s+plan\b|সিট\s+প্ল্যান", lowered):
+            bonuses["admission_test_result"] = 0.080
+            bonuses["admission_overview"] = 0.060
+        if re.search(r"\badmission\s+test\s+results?\b|ফলাফল", lowered):
+            bonuses["admission_test_result"] = 0.100
+        if re.search(r"\bcredit\s+transfer\b|ক্রেডিট\s+ট্রান্সফার", lowered):
+            bonuses["credit_transfer_guidelines"] = 0.100
+        if re.search(r"\bguardians?\b|অভিভাবক", lowered):
+            bonuses["guardian_guidelines"] = 0.100
+        if re.search(r"\bpayment\s+(?:guidelines?|instructions?|process|methods?)\b|পেমেন্ট", lowered):
+            bonuses["payment_guidelines"] = 0.100
+        if re.search(r"\blife\s+insurance\b|জীবন\s+বীমা|লাইফ\s+ইন্স্যুরেন্স", lowered):
+            bonuses["life_insurance"] = 0.100
         if re.search(r"\bcurrent\s+admission|admission\s+details", lowered):
             bonuses["admission_overview"] = 0.070
+        if re.search(r"\b(?:deadline|last\s+date|when\s+to\s+apply)\b|শেষ\s+তারিখ", lowered):
+            bonuses["admission_notices"] = 0.100
+            bonuses["current_admission_information"] = 0.080
+            bonuses["admission_overview"] = 0.050
         return bonuses
 
     @staticmethod
@@ -1014,12 +1104,19 @@ def _evidence_matches_query_context(
     category = chunk.category.casefold()
     intent = _fact_intent(query)
     acronym = _single_named_program_acronym(query)
+    named_markers = _named_program_markers(query)
 
     def program_matches(program: str) -> bool:
         if program_phrase is not None:
             if not program_phrase_matches(program, program_phrase):
                 return False
             return _program_level_matches(query, program, acronym or "")
+        if named_markers:
+            return any(
+                _chunk_program_matches(program, marker)
+                and _program_level_matches(query, program, marker)
+                for marker in named_markers
+            )
         if acronym is None:
             return True
         return _chunk_program_matches(program, acronym) and _program_level_matches(
@@ -1027,14 +1124,18 @@ def _evidence_matches_query_context(
         )
 
     if intent == "tuition":
-        if _INTERNATIONAL_CURRENCY_PATTERN.search(query):
+        audience = tuition_audience(query)
+        if audience == "international":
             if category != "international_admission":
+                return False
+        elif audience == "both":
+            if category not in {"international_admission", "tuition_and_fees"}:
                 return False
         elif category != "tuition_and_fees":
             return False
-        if _LOCAL_CURRENCY_PATTERN.search(query) and "$" in chunk.content:
+        if audience == "local" and "$" in chunk.content:
             return False
-        if program_phrase is not None or acronym is not None:
+        if program_phrase is not None or named_markers:
             program = str(chunk.program or "")
             return bool(program) and program_matches(program)
         return True
@@ -1048,18 +1149,63 @@ def _evidence_matches_query_context(
     if intent == "waiver":
         if category != "waivers":
             return False
-        if acronym is None and program_phrase is None:
+        if not named_markers and program_phrase is None:
             return True
         if _GPA_QUERY_PATTERN.search(query) and chunk.content_type.casefold() != "table":
             return False
         if chunk.program:
             return program_matches(str(chunk.program))
-        if acronym is None:
+        if not named_markers:
             return False
-        return _chunk_content_matches_program(chunk.content, acronym)
+        return any(
+            _chunk_content_matches_program(chunk.content, marker)
+            for marker in named_markers
+        )
 
     if intent == "scholarship":
         return category == "scholarships"
+
+    if intent == "international_scholarship":
+        return category == "international_scholarships"
+
+    if intent == "financial_aid":
+        return category == "financial_aid"
+
+    if intent == "waiver_calculator":
+        return category == "waiver_calculator"
+
+    if intent == "admission_test_schedule":
+        if category not in {
+            "admission_overview",
+            "admission_notices",
+            "current_admission_information",
+        }:
+            return False
+        return _scope_matches_chunk(query, chunk)
+
+    if intent == "admission_test_seat_plan":
+        if category not in {
+            "admission_test_result",
+            "admission_overview",
+            "admission_notices",
+        }:
+            return False
+        return _scope_matches_chunk(query, chunk)
+
+    if intent == "admission_test_result":
+        return category == "admission_test_result" and _scope_matches_chunk(query, chunk)
+
+    if intent == "credit_transfer":
+        return category == "credit_transfer_guidelines"
+
+    if intent == "guardian_guidelines":
+        return category == "guardian_guidelines"
+
+    if intent == "payment_guidelines":
+        return category == "payment_guidelines"
+
+    if intent == "life_insurance":
+        return category == "life_insurance"
 
     if intent == "documents":
         return category == "required_admission_documents" and _document_level_matches(
@@ -1069,13 +1215,16 @@ def _evidence_matches_query_context(
     if intent == "admission_process":
         return category == "admission_process"
 
+    if intent == "online_application":
+        return category == "admission_application_process"
+
     if intent == "diploma_application":
         return category == "admission_application_process"
 
     if intent == "eligibility":
         if category != "undergraduate_programs":
             return False
-        if acronym is None and program_phrase is None:
+        if not named_markers and program_phrase is None:
             return True
         program = str(chunk.program or "")
         return bool(program) and program_matches(program)
@@ -1083,7 +1232,7 @@ def _evidence_matches_query_context(
     if intent == "program_info":
         if category != "undergraduate_programs":
             return False
-        if acronym is None and program_phrase is None:
+        if not named_markers and program_phrase is None:
             return True
         program = str(chunk.program or "")
         return bool(program) and program_matches(program)
@@ -1098,11 +1247,29 @@ def _evidence_matches_query_context(
         return category in {"admission_overview", "current_admission_information"}
 
     if intent == "deadline":
-        return category in {
+        if program_phrase is not None:
+            searchable = "{} {}".format(chunk.program or "", chunk.content)
+            if not program_phrase_matches(searchable, program_phrase):
+                return False
+        if category not in {
             "admission_notices",
             "admission_overview",
             "current_admission_information",
-        }
+        }:
+            return False
+        return _scope_matches_chunk(query, chunk)
+
+    if intent == "fact_check":
+        focus_tokens = _claim_focus_tokens(query)
+        if not focus_tokens:
+            return False
+        searchable = "{} {} {} {}".format(
+            chunk.title,
+            chunk.program or "",
+            chunk.faculty or "",
+            chunk.content,
+        )
+        return focus_tokens <= _normalized_match_tokens(searchable)
 
     if (acronym is not None or program_phrase is not None) and intent is None:
         if category not in {"undergraduate_programs", "program_specific_admission"}:
@@ -1128,13 +1295,25 @@ def _fact_intent(query: str) -> Optional[str]:
         QueryIntent.TUITION: "tuition",
         QueryIntent.DOCUMENTS: "documents",
         QueryIntent.APPLICATION_PROCESS: "admission_process",
+        QueryIntent.ONLINE_APPLICATION: "online_application",
         QueryIntent.DIPLOMA_APPLICATION: "diploma_application",
         QueryIntent.ELIGIBILITY: "eligibility",
         QueryIntent.PROGRAM_INFO: "program_info",
         QueryIntent.DEADLINE: "deadline",
         QueryIntent.CONTACT: "contact",
         QueryIntent.INTERNATIONAL: "international",
+        QueryIntent.INTERNATIONAL_SCHOLARSHIP: "international_scholarship",
+        QueryIntent.ADMISSION_TEST_SCHEDULE: "admission_test_schedule",
+        QueryIntent.ADMISSION_TEST_SEAT_PLAN: "admission_test_seat_plan",
+        QueryIntent.ADMISSION_TEST_RESULT: "admission_test_result",
+        QueryIntent.CREDIT_TRANSFER: "credit_transfer",
+        QueryIntent.GUARDIAN_GUIDELINES: "guardian_guidelines",
+        QueryIntent.PAYMENT_GUIDELINES: "payment_guidelines",
+        QueryIntent.WAIVER_CALCULATOR: "waiver_calculator",
+        QueryIntent.FINANCIAL_AID: "financial_aid",
+        QueryIntent.LIFE_INSURANCE: "life_insurance",
         QueryIntent.ADMISSION_OVERVIEW: "admission_overview",
+        QueryIntent.FACT_CHECK: "fact_check",
     }.get(analysis.intent)
     if mapped is not None:
         return mapped
@@ -1160,16 +1339,76 @@ def _program_lane_category(
     """Narrow only the supplemental program-name lane to compatible evidence."""
 
     if intent is QueryIntent.TUITION:
-        return (
-            "international_admission"
-            if _INTERNATIONAL_CURRENCY_PATTERN.search(query)
-            else "tuition_and_fees"
-        )
+        audience = tuition_audience(query)
+        if audience == "both":
+            return None
+        return "international_admission" if audience == "international" else "tuition_and_fees"
     if intent in {QueryIntent.PROGRAM_INFO, QueryIntent.ELIGIBILITY}:
         return "undergraduate_programs"
     if intent is QueryIntent.WAIVER:
         return "waivers"
     return None
+
+
+def _exact_topic_category(intent: Optional[QueryIntent]) -> Optional[str]:
+    """Return a one-to-one evidence category for an explicitly named topic."""
+
+    return {
+        QueryIntent.ONLINE_APPLICATION: "admission_application_process",
+        QueryIntent.ADMISSION_TEST_RESULT: "admission_test_result",
+        QueryIntent.CREDIT_TRANSFER: "credit_transfer_guidelines",
+        QueryIntent.GUARDIAN_GUIDELINES: "guardian_guidelines",
+        QueryIntent.PAYMENT_GUIDELINES: "payment_guidelines",
+        QueryIntent.INTERNATIONAL_SCHOLARSHIP: "international_scholarships",
+        QueryIntent.WAIVER_CALCULATOR: "waiver_calculator",
+        QueryIntent.FINANCIAL_AID: "financial_aid",
+        QueryIntent.LIFE_INSURANCE: "life_insurance",
+    }.get(intent)
+
+
+def _normalized_match_tokens(text: str) -> set[str]:
+    """Return conservative lexical forms for claim/evidence compatibility."""
+
+    tokens = _meaningful_tokens(text)
+    forms = set(tokens)
+    for token in tokens:
+        if len(token) > 4 and token.endswith("ies"):
+            forms.add(token[:-3] + "y")
+        elif (
+            len(token) > 3
+            and token.endswith("s")
+            and not token.endswith("ss")
+            and token not in {"does", "has", "this", "thus", "was"}
+        ):
+            forms.add(token[:-1])
+    return forms
+
+
+def _claim_focus_tokens(query: str) -> set[str]:
+    """Keep the asserted facts that official evidence must explicitly contain."""
+
+    return _normalized_match_tokens(query) - _CLAIM_FOCUS_IGNORED_TOKENS
+
+
+def _scope_focus_tokens(query: str) -> set[str]:
+    """Extract explicit scope from a current date/result query."""
+
+    return _normalized_match_tokens(query) - _SCOPE_FOCUS_IGNORED_TOKENS
+
+
+def _scope_matches_chunk(query: str, chunk: KnowledgeChunk) -> bool:
+    """Require explicit faculty/semester/year scope to survive retrieval."""
+
+    focus = _scope_focus_tokens(query)
+    if not focus:
+        return True
+    searchable = "{} {} {} {}".format(
+        chunk.title,
+        chunk.program or "",
+        chunk.faculty or "",
+        chunk.content,
+    )
+    return focus <= _normalized_match_tokens(searchable)
 
 
 def _chunk_content_matches_program(content: str, acronym: str) -> bool:
@@ -1196,6 +1435,18 @@ def _document_level_matches(query: str, chunk: KnowledgeChunk) -> bool:
         re.search(r"\b(?:bachelors?|undergraduate)\b", lowered_query)
     )
     asks_online = bool(re.search(r"\bonline\b", lowered_query))
+    asks_international = bool(
+        re.search(r"\b(?:international|foreign|overseas)\b", lowered_query)
+        or re.search(r"বিদেশি|আন্তর্জাতিক", query)
+    )
+    if asks_international:
+        searchable = "{} {} {}".format(
+            chunk.title, chunk.program or "", chunk.content
+        ).casefold()
+        return bool(
+            re.search(r"\b(?:international|foreign|overseas)\b", searchable)
+            or re.search(r"বিদেশি|আন্তর্জাতিক", searchable)
+        )
     if asks_online:
         return "online" in program
     if asks_diploma:

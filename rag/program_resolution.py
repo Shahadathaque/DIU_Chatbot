@@ -125,41 +125,57 @@ def _contains_phrase(text: str, phrase: str) -> bool:
     return bool(re.search(r"(?:^|\s)" + re.escape(phrase) + r"(?:$|\s)", text))
 
 
-def _alias_matches(query: str) -> list[tuple[ProgramAlias, str]]:
+def _alias_matches(query: str) -> list[tuple[ProgramAlias, str, tuple[int, int]]]:
     normalized = normalize_program_text(query)
-    matches: list[tuple[ProgramAlias, str]] = []
+    matches: list[tuple[ProgramAlias, str, tuple[int, int]]] = []
     for program in PROGRAM_ALIASES:
         candidates = (*program.aliases, program.canonical)
-        matched = {
-            alias_norm
-            for alias in candidates
-            if (alias_norm := normalize_program_text(alias))
-            and (
-                alias_norm not in _CASE_SENSITIVE_SHORT_ALIASES
-                or bool(
-                    re.search(
-                        rf"(?<![A-Za-z0-9]){re.escape(alias.upper())}(?![A-Za-z0-9])",
-                        query,
-                    )
-                )
+        occurrences: list[tuple[str, tuple[int, int]]] = []
+        for alias in candidates:
+            alias_norm = normalize_program_text(alias)
+            if not alias_norm:
+                continue
+            if alias_norm in _CASE_SENSITIVE_SHORT_ALIASES and not re.search(
+                rf"(?<![A-Za-z0-9]){re.escape(alias.upper())}(?![A-Za-z0-9])",
+                query,
+            ):
+                continue
+            pattern = re.compile(
+                r"(?:^|\s)(" + re.escape(alias_norm) + r")(?:$|\s)"
             )
-            and _contains_phrase(normalized, alias_norm)
-        }
-        if matched:
-            best = max(matched, key=lambda value: (len(value.split()), len(value)))
-            matches.append((program, best))
+            for match in pattern.finditer(normalized):
+                occurrences.append((alias_norm, match.span(1)))
+        if occurrences:
+            best, span = max(
+                occurrences,
+                key=lambda value: (len(value[0].split()), len(value[0])),
+            )
+            matches.append((program, best, span))
     return matches
 
 
 def named_program_markers(query: str) -> list[str]:
-    """Return only the most-specific explicitly named program marker(s)."""
+    """Return the most-specific marker at each independently named span.
+
+    A broad alias contained by a longer name is discarded (``management``
+    inside ITM, or ``English`` inside MA in English), while separate program
+    mentions are all retained even when their alias lengths differ.
+    """
 
     matches = _alias_matches(query)
     if not matches:
         return []
-    best_score = max((len(alias.split()), len(alias)) for _, alias in matches)
-    winners = [item.marker for item, alias in matches if (len(alias.split()), len(alias)) == best_score]
-    return list(dict.fromkeys(winners))
+    selected: list[tuple[ProgramAlias, tuple[int, int]]] = []
+    for item, alias, span in sorted(
+        matches,
+        key=lambda value: (len(value[1].split()), len(value[1])),
+        reverse=True,
+    ):
+        if any(span[0] < chosen[1] and chosen[0] < span[1] for _, chosen in selected):
+            continue
+        selected.append((item, span))
+    selected.sort(key=lambda value: value[1][0])
+    return list(dict.fromkeys(item.marker for item, _ in selected))
 
 
 def matched_program_phrase(query: str) -> Optional[str]:

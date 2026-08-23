@@ -265,3 +265,38 @@ def test_resolve_followup_does_not_reuse_topic_for_a_new_faculty_query() -> None
 
         assert resolved == message
         assert "scholarship" not in resolved.casefold()
+
+
+def test_resolve_followup_keeps_program_and_topic_for_international_scope() -> None:
+    history = [
+        ChatTurn(role="user", content="What is the tuition fee of CSE?"),
+        ChatTurn(role="assistant", content="Previous answer."),
+    ]
+
+    resolved = resolve_followup("What about international students?", history)
+
+    assert "Computer Science and Engineering" in resolved
+    assert "tuition fee" in resolved
+
+
+def test_resolve_followup_does_not_attach_program_to_explicit_topic_switch() -> None:
+    history = [
+        ChatTurn(role="user", content="What is the tuition fee of CSE?"),
+        ChatTurn(role="assistant", content="Previous answer."),
+    ]
+
+    resolved = resolve_followup("Tell me about scholarships", history)
+
+    assert resolved == "Tell me about scholarships"
+    assert "Computer Science and Engineering" not in resolved
+
+
+def test_resolve_followup_keeps_document_topic_for_diploma_scope() -> None:
+    history = [
+        ChatTurn(role="user", content="What documents do I need?"),
+        ChatTurn(role="assistant", content="Previous answer."),
+    ]
+
+    resolved = resolve_followup("What about diploma students?", history)
+
+    assert "required admission documents" in resolved

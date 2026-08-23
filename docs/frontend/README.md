@@ -57,6 +57,11 @@ dashboard, then redeploy to collect page-view data.
 Central client: `frontend/services/api.ts`  
 Provisional types: `frontend/types/api.ts`
 
+The streaming client retries once only when a transient connection/server
+failure occurs before any answer token is received. It never replays a request
+after output begins and never retries an explicit SSE error, preventing duplicate
+answers or double execution while smoothing over a first-request cold start.
+
 ## API contract status
 
 `contracts/api-contract.md` is the shared contract. `frontend/types/api.ts` is

@@ -1,162 +1,418 @@
-# TASK — Retrieval quality, evidence validation, deployment sync, and public verification
+# Final Comprehensive SQA Audit and Production Repair
 
-Status: Blocked — local implementation and verification complete; Neon rebuild
-and Render/Vercel deployment are waiting for external-action approval capacity.
+Act as a senior Software Quality Assurance Engineer, AI/RAG Engineer, Backend Engineer, and Frontend Validation Engineer.
 
-## Objective
+Perform a final, comprehensive audit and repair of the existing DIU Admission AI project.
 
-Fix the retrieval layer so the product answers broad, short, paraphrased, Bangla, and Banglish questions using verified DIU evidence, while preserving strict refusal behavior for unsupported questions.
+Do not assume the project is correct because existing tests pass. Existing tests may be incomplete, overly narrow, or may not represent real user behavior.
 
-This is the active task. It replaces the earlier optimization task and must be executed in full.
+The goal is to find unknown defects, fix their root causes generically, add permanent regression coverage, and verify the complete system.
 
-## Scope
+## Core Objective
 
-1. Improve semantic retrieval quality for:
-   - broad questions
-   - short questions
-   - paraphrased questions
-   - Bangla questions
-   - Banglish questions
-2. Fix all displayed example questions so each example retrieves verified evidence.
-3. Add query normalization, intent detection, and synonym/query expansion.
-4. Calibrate retrieval thresholds using tests—not arbitrary lowering.
-5. Preserve refusal for unsupported questions.
-6. Add regression tests for common questions and citations.
-7. Rebuild/sync Neon vectors, redeploy Render/Vercel, and verify publicly.
+The assistant must reliably understand and answer admission-related questions about Daffodil International University using verified official DIU evidence.
 
-## Rules
+It must correctly handle:
 
-- Only use verified DIU official sources as retrieval evidence.
-- Do not invent facts, fees, deadlines, scholarship rules, or eligibility rules.
-- If evidence is missing or insufficient, answer with an appropriate unknown/insufficient-information response.
-- Deterministic eligibility decisions must remain in the rule engine, not the LLM.
-- The LLM may explain the rule-engine result but may not override it.
-- Do not commit secrets, API keys, .env files, tokens, or model weights.
-- Keep raw scraped data immutable.
-- Maintain provenance for all retrieved knowledge.
-- Do not hide failing retrieval cases behind broader matching and do not lower thresholds without test evidence.
+- Natural conversational questions
+- Short and incomplete-looking questions
+- Statements that imply questions
+- English
+- Bangla
+- Banglish
+- Common spelling mistakes
+- Different capitalization
+- Punctuation differences
+- Follow-up questions
+- Context-dependent questions
+- Specific programs and faculties
+- Undergraduate/postgraduate ambiguity
+- Local/international student distinctions
+- Unsupported or unverifiable questions
 
-## Required implementation
+The assistant must not claim to understand or answer facts that are unavailable in official collected evidence. In those cases, it must clearly return insufficient information and provide the most relevant verified official link when available.
 
-### 1) Retrieval improvements
+## Important Rules
 
-Implement or improve the retrieval pipeline with:
-- query normalization
-- intent detection
-- synonym and reformulation expansion
-- abbreviated/broad query handling
-- Bangla and Banglish normalization
-- paraphrase-aware matching
-- evidence scoring that prefers exact verified source matches
-- citation-aware answer generation
+1. Inspect the complete repository before modifying files.
+2. Inspect current implementations, contracts, tests, source registry, cleaned data, chunks, retrieval, generation, API, and frontend behavior.
+3. Preserve working behavior.
+4. Do not make narrow one-query patches.
+5. Fix generic root causes.
+6. Do not lower global retrieval thresholds.
+7. Do not modify correct DIU facts, tuition values, policies, dates, or eligibility rules.
+8. Do not hard-code changing admission facts into application logic.
+9. Use only verified official DIU sources.
+10. Do not fabricate missing information.
+11. Do not weaken or delete existing tests.
+12. Add appropriate regression tests for every repaired defect.
+13. Never claim a test passed unless it was actually executed.
+14. For this task, commit, push, and deploy after the required verification passes.
+15. Never expose or commit API keys, database credentials, tokens, or `.env` files.
+16. Preserve all existing uncommitted user work.
+17. Do not stop after diagnosis.
 
-The system must retrieve evidence for common admissions questions, including likely phrasing variants such as:
-- "what is the admission fee?"
-- "admission cost"
-- "what is the total fee?"
-- "admission requirement"
-- "eligible for CSE?"
-- "am i eligible for bsc in cse?"
-- "BSc in CSE eligibility"
-- "এডমিশন ফি কত?"
-- "admission fee bangla"
-- "CSE eligibility 2025?"
-- "what are the requirements for computer science?"
-- "programs for bba"
-- "kono course er eligibility ki?"
-- "CSE ar admission condition"
+## Required Audit Areas
 
-### 2) Example-question cleanup
+### 1. Query Understanding
 
-Fix all example or demo questions shown in the product or docs so that each one is backed by actual verified evidence.
+Audit and repair:
 
-Do not leave examples that are vague, ungrounded, or not retrievable from the knowledge base.
+- Intent classification
+- Intent precedence
+- Query normalization
+- Unicode normalization
+- Capitalization and whitespace
+- Punctuation
+- Singular/plural forms
+- Common spelling mistakes
+- English/Bangla/Banglish detection
+- Program-name detection
+- Faculty-name detection
+- Local/international detection
+- Undergraduate/postgraduate detection
+- Statement-versus-question detection
+- Short-query handling
+- Ambiguous-query handling
+- Unsupported-domain rejection
 
-Examples of invalid demo questions must be replaced with verified ones, such as questions whose answers are directly supported by the current knowledge base and source registry.
+Ensure broad words such as `program`, `student`, `scholarship`, `fees`, `apply`, and `admission` do not incorrectly override more specific intent.
 
-### 3) Retrieval threshold calibration
+### 2. Complete Admission Coverage
 
-Calibrate retrieval thresholds using failing tests and evaluation results.
+Test every official admission section:
 
-Do not lower thresholds arbitrarily to make a question pass. Any change to retrieval threshold must be justified by:
-- a failing regression case
-- a reproducible test
-- a measurable improvement in retrieved evidence quality
+#### Admission Information
 
-This includes broad, short, paraphrased, Bangla, and Banglish queries.
+- Admission overview
+- Admission test schedule
+- Admission test seat plan
+- Admission test results
+- Admission contact
+- Programs
+- Online application
+- Application deadline/current notices
 
-### 4) Refusal preservation
+#### Guidelines
 
-Unsupported questions must still be refused or answered as insufficient information when the system lacks verified source evidence.
+- Admission eligibility
+- Admission process
+- Admission checklist
+- Required documents
+- Credit transfer
+- Guardian/parent guidelines
 
-Examples of unsupported questions:
-- unsupported external policies
-- made-up deadlines or scholarship claims
-- fake fee values not present in the source set
-- personal application status not verifiable from official sources
+#### Fees and Funding
 
-The model must not fabricate or answer from speculation.
+- Local tuition fees
+- International tuition fees
+- Payment guidelines
+- Local scholarships
+- International scholarships
+- Financial aid
+- Waivers
+- Female waiver
+- Waiver calculator
+- Life insurance
 
-### 5) Citation and regression tests
+Test multiple natural phrasings for every section.
 
-Add tests covering:
-- common short questions
-- broad queries
-- paraphrased questions
-- Bangla queries
-- Banglish queries
-- unsupported questions that must refuse
-- citation presence and exact source grounding
-- evidence retrieval quality
-- examples shown in UI/docs or mock prompts
+### 3. Program Resolution
 
-The tests must assert that the retrieved chunks or citations correspond to the actual evidence set, not just model text.
+Audit the complete program catalog.
 
-## Acceptance criteria
+Test:
 
-- Semantic retrieval works well for broad, short, paraphrased, Bangla, and Banglish questions.
-- Example questions in the UI and docs are all evidence-backed and verified.
-- Query normalization, intent detection, synonym expansion, and retrieval expansion are implemented and tested.
-- Retrieval thresholds are calibrated by test results, not guesswork.
-- Unsupported questions are refused or marked unknown appropriately.
-- Regression tests cover common questions and citations.
-- Neon vectors are rebuilt or synchronized with the current source data.
-- Render backend is redeployed with the updated retrieval logic.
-- Vercel frontend is redeployed with the updated app behavior.
-- Public deployment is verified by making live requests and confirming the app responds correctly.
-- No secrets are committed or exposed.
+- Full official names
+- Acronyms
+- Degree-prefix variations
+- `and` versus `&`
+- Commas
+- Periods
+- Extra whitespace
+- Capitalization
+- Undergraduate/postgraduate versions
+- Diploma-holder variants
+- Major/specialization variants
+- Unknown program names
 
-## Required execution steps
+Explicit postgraduate queries must never fall back to undergraduate programs.
 
-1. Inspect the current retrieval pipeline and identify failure cases.
-2. Add failing regression tests for retrieval quality and evidence grounding.
-3. Implement query normalization, intent detection, and expansion.
-4. Adjust retrieval logic and thresholds using test evidence.
-5. Verify refusal behavior remains strict for unsupported questions.
-6. Fix all example questions shown to users.
-7. Rebuild or sync the Neon vector index.
-8. Redeploy the backend to Render.
-9. Redeploy the frontend to Vercel.
-10. Test the public URLs and verify the live application works.
-11. Summarize results and any remaining limitations.
+Specific program names must beat broad markers.
 
-## Deliverables
+Run the full 50-program tuition retrieval audit from the cleaned tuition table.
 
-- Updated retrieval logic
-- Regression tests for common questions and citations
-- Cleaned example prompts/questions
-- Public deployment verification notes
-- Any required config updates without exposing secrets
+### 4. Retrieval Correctness
 
-## Constraints
+Inspect and repair:
 
-- Do not change the eligibility engine or rule logic unless the task explicitly requires it.
-- Do not fabricate DIU facts.
-- Do not lower retrieval thresholds without test evidence.
-- Do not keep unsupported example prompts in the UI.
-- Do not deploy secrets to Git or chat logs.
-- Stop only after this task is executed and verified.
+- Canonical query generation
+- Semantic retrieval
+- Exact-topic retrieval lanes
+- Metadata filtering
+- Program compatibility
+- Faculty compatibility
+- Degree-level compatibility
+- Local/international compatibility
+- Current/historical compatibility
+- Evidence compatibility
+- Claim-focus filtering
+- Mismatch penalties
+- Ranking bonuses
+- Deduplication
+- Threshold enforcement
+- Partial-source handling
 
-## Execution note
+Exact compatible evidence must take precedence over generic semantic similarity.
 
-This task is the active task. It supersedes older task files and should be treated as the single working specification.
+A semantically similar but incompatible page must never be returned as the answer.
+
+### 5. Context and Follow-Up Questions
+
+Test multi-turn conversations such as:
+
+- “Tell me the CSE fees.”
+- “What about international students?”
+- “Does it have waiver?”
+- “What documents do I need?”
+- “What about diploma students?”
+
+Also test:
+
+- Topic switches
+- Program switches
+- Local-to-international switches
+- Undergraduate-to-postgraduate switches
+- New faculty questions
+- New scholarship questions
+- Starting a new chat
+
+Old context must not contaminate a clearly new question.
+
+### 6. Grounded Answer Generation
+
+Verify that generated answers:
+
+- Directly answer the user’s actual question
+- Use only supplied evidence
+- Preserve exact numbers and currencies
+- Never convert USD to BDT automatically
+- Never confuse tuition fees and total program fees
+- Never infer faculty-specific facts from general facts
+- Never infer local rules for international students
+- Never infer undergraduate rules for postgraduate students
+- Never invent deadlines, requirements, contacts, fees, scholarships, or policies
+- Clearly state uncertainty
+- Provide correct official citations
+- Do not cite incompatible sources
+
+Inspect structured response formatters for cross-intent contamination.
+
+### 7. API Validation
+
+Test:
+
+- `/api/chat`
+- `/api/programs`
+- `/api/sources`
+- `/api/eligibility`
+- `/api/health`
+
+Test:
+
+- Valid requests
+- Invalid requests
+- Empty messages
+- Very long messages
+- Unicode
+- Bangla
+- Banglish
+- Repeated requests
+- First request after cold start
+- Provider timeout
+- Provider quota/rate-limit errors
+- Database failures
+- Empty retrieval
+- Partial evidence
+- Generator failure
+- Malformed provider responses
+- CORS
+- Unauthorized origins
+- Stable error response shape
+
+The first request from a new device must not fail because of cold-start timing or incomplete initialization.
+
+### 8. Frontend Validation
+
+Verify:
+
+- Desktop layout
+- Mobile layout
+- Chat submission
+- Loading state
+- Retry behavior
+- Error rendering
+- Source links
+- New chat
+- Language selector
+- Long answers
+- Long program lists
+- Scrolling
+- Input focus
+- Disabled send button
+- Duplicate submission prevention
+- Network failure behavior
+- First-load behavior
+- Accessibility basics
+- No empty assistant cards
+- No stale error after successful retry
+- No old conversation after New Chat
+
+### 9. Adversarial and Unknown Defect Testing
+
+Create a systematic adversarial test matrix including:
+
+- One-word queries
+- Two-word queries
+- Typos
+- Misspelled program names
+- Conflicting intents
+- Multiple programs in one query
+- Multiple faculties
+- Multiple degree levels
+- Negative questions
+- Yes/no claims
+- Unsupported claims
+- Another university’s name
+- Personal application status
+- Requests for guaranteed admission
+- Requests for secret scholarships
+- Requests for unavailable future information
+- Prompt injection attempts
+- Citation manipulation attempts
+- Extremely repetitive input
+- Special characters
+- Emoji
+- Mixed Bangla and English
+- Mixed Banglish and English
+
+Do not merely list the cases. Automate them wherever practical and repair failures.
+
+## Known Problem Queries
+
+Retest these explicitly:
+
+- `All Students of Undergraduate Program Will Get a Laptop Free.`
+- `Does every undergraduate student receive a free laptop?`
+- `Last Date to Apply`
+- `Faculty of Science and Information Technology admission test time and date`
+- `Scholarship International`
+- `Financial Aid & Scholarships`
+- `female waiver`
+- `female waever`
+- `waiver`
+- `scholership`
+- `scholarship`
+- `FSIT department`
+- `Can a foreign student apply?`
+- `How can an international student apply?`
+- `What documents are required for bachelor admission?`
+- `How can I pay my admission fee?`
+- `What papers are required?`
+- `Can I transfer credits?`
+- `Information for parents`
+- `Does DIU offer New Program?`
+
+Retest the five canonical tuition failures:
+
+1. `Information Technology and Management tuition fees`
+2. `BBA in Finance and Banking tuition fees`
+3. `Development Studies tuition fees`
+4. `MA in English tuition fees`
+5. `MSS in Journalism Media and Communication tuition fees`
+
+Preserve working cases including:
+
+- CSE
+- SWE
+- CIS
+- MCT
+- ITM
+- ICE
+- Civil Engineering
+- EEE
+- Pharmacy
+- Master of Pharmacy
+- Public Health
+- Master of Public Health
+- Agriculture
+- Architecture
+- Textile
+- NFE
+- ESDM
+- PESS
+- Law
+- LLM
+- MBA
+- JMC undergraduate
+- Tourism and Hospitality Management
+
+## Required Automated Audits
+
+Create or improve automated audits for:
+
+1. All official admission sections
+2. All cleaned tuition-table programs
+3. English/Bangla/Banglish variants
+4. Typo and short-query variants
+5. Intent-conflict cases
+6. Undergraduate/postgraduate ambiguity
+7. Local/international ambiguity
+8. Follow-up context behavior
+9. Unsupported claims
+10. Citation and evidence compatibility
+
+Each audit must produce a clear pass/fail report and identify the failing query, expected intent/category/program, and actual result.
+
+## Required Test Execution
+
+Run:
+
+```bash
+python -m py_compile rag/query_processing.py rag/retriever.py backend/services/chat_service.py
+pytest -q
+pytest -q -m integration
+```
+
+Run the frontend validation from `frontend/`:
+
+```bash
+npm test
+npm run lint
+npx tsc --noEmit
+npm run build
+```
+
+Run the deterministic and real-data audits:
+
+```bash
+python scripts/audit_admission_coverage.py
+python scripts/audit_admission_coverage.py --retrieval
+python scripts/audit_query_quality.py
+python scripts/audit_tuition_retrieval.py
+```
+
+Perform real API checks for all known failures and representative preserved
+programs. Perform desktop/mobile browser verification when the configured browser
+runtime is available. Record environmental blocks honestly; do not report a
+blocked check as passed.
+
+## Completion Requirements
+
+1. Fix generic root causes discovered by the audit.
+2. Add permanent regression tests and reusable audit scripts.
+3. Keep official-source evidence, program, degree-level, and audience scope strict.
+4. Update relevant engineering documentation and `plan.md`.
+5. Report test counts, skipped integrations, real API results, browser status,
+   known evidence gaps, and deployment drift.
+6. Commit, push, and deploy the verified changes without exposing secrets.

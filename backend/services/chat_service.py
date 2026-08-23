@@ -8,9 +8,14 @@ from typing import Any, Dict, List, Optional, Sequence
 from backend.core.errors import ApiError
 from backend.models.chat import ChatResponse, ChatSource, Confidence, Language
 from rag.generator import Generator, GeneratorUnavailableError
-from rag.program_resolution import program_phrase_matches
+from rag.program_resolution import (
+    PROGRAM_BY_MARKER,
+    chunk_program_matches,
+    named_program_markers,
+    program_phrase_matches,
+)
 from rag.retriever import Retriever, _matched_program_phrase
-from rag.query_processing import QueryIntent, analyze_query
+from rag.query_processing import QueryIntent, analyze_query, tuition_audience
 
 
 _INTRO_BY_LANGUAGE: Dict[Language, str] = {
@@ -65,6 +70,10 @@ _SYSTEM_PROMPT = (
     "values for different programs or faculties and the user did not identify "
     "one, do not choose a value for them; explain that it depends on the program "
     "or faculty and ask for that detail. Prefer the language the user requested. "
+    "Treat an explicit faculty, department, program, semester, year, or "
+    "local/international qualifier as a required constraint. Do not attach a "
+    "general date, rule, or value to that qualifier unless the evidence explicitly "
+    "connects them; state the limitation instead. "
     "Do not add a process step that is absent from the supplied evidence. Answer "
     "briefly and directly. Prefer a short paragraph or at most six bullets. "
     "Do not add phone numbers, email addresses, or unrelated details unless the "
@@ -102,9 +111,16 @@ _PROGRAM_SENSITIVE_TOPICS = {
 }
 _GPA_MENTION_PATTERN = re.compile(r"(?i)\b(?:gpa|grades?)\b")
 _GPA_FIVE_PATTERN = re.compile(r"(?i)\bgpa\s*-?\s*5(?:\.0+)?\b")
+_UNIVERSAL_FUNDING_CLAIM_PATTERN = re.compile(
+    r"(?i)(?:\b(?:all|every|everyone|guaranteed|guarantee)\b.*"
+    r"\b(?:scholarships?|waivers?|financial\s+aid)\b|"
+    r"\b(?:scholarships?|waivers?|financial\s+aid)\b.*"
+    r"\b(?:all|every|everyone|guaranteed|guarantee)\b)"
+)
 _ELLIPTICAL_FOLLOWUP_PATTERN = re.compile(
     r"(?i)^\s*(?:"
     r"what\s+about\b|how\s+about\b|and\b|also\b|then\b|same\b|"
+    r"does\s+it\b|does\s+that\b|is\s+there\b|what\s+about\s+it\b|"
     r"(?:in\s+)?(?:bdt|taka|tk\.?|usd|dollars?)\b|"
     r"for\s+(?:me|it|that|this)\b"
     r")"
@@ -201,18 +217,26 @@ def resolve_followup(message: str, history: Optional[Sequence[Any]] = None) -> s
     current_intent = analyze_query(
         message, program_phrase=current_program
     ).intent
-    has_standalone_intent = bool(
-        current_program is None
-        and current_topic is None
-        and current_intent is not None
+    is_elliptical = bool(_ELLIPTICAL_FOLLOWUP_PATTERN.search(message))
+    short_topic_followup = bool(
+        current_topic is not None and len(message.split()) <= 3
+    )
+    scoped_elliptical_followup = bool(
+        is_elliptical
+        and (
+            current_intent is None
+            or current_intent
+            in {
+                QueryIntent.INTERNATIONAL,
+                QueryIntent.DIPLOMA_APPLICATION,
+                QueryIntent.FACT_CHECK,
+            }
+        )
     )
     carries_context = bool(
-        not has_standalone_intent
-        and (
-            current_program is not None
-            or current_topic is not None
-            or _ELLIPTICAL_FOLLOWUP_PATTERN.search(message)
-        )
+        current_program is not None
+        or (current_topic is not None and (is_elliptical or short_topic_followup))
+        or scoped_elliptical_followup
     )
     previous_program = (
         _latest_history_value(history, _matched_program_phrase)
@@ -328,6 +352,16 @@ class ChatService:
                 confidence="low",
                 language=language,
             )
+        if all(result.chunk.extraction_status != "success" for result in results):
+            # Exact-topic retrieval may deliberately return a title-only official
+            # page when DIU currently exposes no substantive body. Preserve the
+            # verified destination, but never ask the generator to fill the gap.
+            return ChatResponse(
+                answer=_INSUFFICIENT_ANSWER[language],
+                sources=_sources_from(results),
+                confidence="low",
+                language=language,
+            )
         structured_response = _structured_response(resolved, language, results)
         if structured_response is not None:
             return structured_response
@@ -430,7 +464,10 @@ def _structured_response(
         waiver_response = _waiver_table_response(message, language, results)
         if waiver_response is not None:
             return waiver_response
-    if topic == "scholarship":
+    if (
+        analysis.intent is QueryIntent.SCHOLARSHIP
+        and not _UNIVERSAL_FUNDING_CLAIM_PATTERN.search(message)
+    ):
         scholarship_response = _scholarship_list_response(language, results)
         if scholarship_response is not None:
             return scholarship_response
@@ -438,6 +475,7 @@ def _structured_response(
         return None
 
     program_phrase = _matched_program_phrase(message)
+    program_markers = named_program_markers(message)
     table_results = [
         result
         for result in results
@@ -452,32 +490,133 @@ def _structured_response(
             )
         )
     ]
+    audience = tuition_audience(message)
+    requested_categories = (
+        ("tuition_and_fees", "international_admission")
+        if audience == "both"
+        else (
+            ("international_admission",)
+            if audience == "international"
+            else ("tuition_and_fees",)
+        )
+    )
+
+    def audience_label(category: str) -> str:
+        if language == "bn":
+            return "আন্তর্জাতিক শিক্ষার্থী" if category == "international_admission" else "স্থানীয় শিক্ষার্থী"
+        if language == "banglish":
+            return "international student" if category == "international_admission" else "local student"
+        return "international students" if category == "international_admission" else "local students"
+
+    def matching_result(marker: str, category: str) -> Any:
+        return next(
+            (
+                result
+                for result in table_results
+                if result.chunk.category.casefold() == category
+                and result.chunk.program
+                and chunk_program_matches(str(result.chunk.program), marker)
+            ),
+            None,
+        )
+
+    if len(program_markers) > 1:
+        lines: List[str] = []
+        matched_results: List[Any] = []
+        all_found = True
+        for marker in program_markers:
+            canonical = PROGRAM_BY_MARKER[marker].canonical
+            for category in requested_categories:
+                matched_result = matching_result(marker, category)
+                prefix = (
+                    f"{canonical} ({audience_label(category)})"
+                    if len(requested_categories) > 1
+                    else canonical
+                )
+                if matched_result is None:
+                    all_found = False
+                    if language == "bn":
+                        lines.append(f"{prefix}: যাচাইকৃত ফি সারি পাওয়া যায়নি।")
+                    elif language == "banglish":
+                        lines.append(f"{prefix}: verified fee row paowa jay ni.")
+                    else:
+                        lines.append(f"{prefix}: no compatible verified fee row was retrieved.")
+                    continue
+                rendered = _tuition_result_details(matched_result.chunk)
+                if rendered is None:
+                    return None
+                program, details = rendered
+                matched_results.append(matched_result)
+                label = (
+                    f"{program} ({audience_label(category)})"
+                    if len(requested_categories) > 1
+                    else program
+                )
+                lines.append(f"{label}: {details}.")
+        return ChatResponse(
+            answer="\n".join(lines),
+            sources=_sources_from(matched_results),
+            confidence=(
+                _confidence_from(matched_results)
+                if all_found and matched_results
+                else "low"
+            ),
+            language=language,
+        )
     # Without an explicitly resolved program, multiple fee rows remain
     # ambiguous and must still be handled by the grounded generator.  With an
     # explicit program, canonical compatibility is stronger evidence than the
     # number of supplemental results returned by semantic retrieval.
     if not table_results or (program_phrase is None and len(table_results) != 1):
         return None
-    result = table_results[0]
-    chunk = result.chunk
-    row = _table_row(chunk.content)
-    if row is None:
+    if len(requested_categories) > 1:
+        lines: List[str] = []
+        matched_results: List[Any] = []
+        for category in requested_categories:
+            result = next(
+                (
+                    candidate
+                    for candidate in table_results
+                    if candidate.chunk.category.casefold() == category
+                ),
+                None,
+            )
+            if result is None:
+                program = program_phrase or "the program"
+                lines.append(
+                    f"{program} ({audience_label(category)}): no compatible verified fee row was retrieved."
+                )
+                continue
+            rendered = _tuition_result_details(result.chunk)
+            if rendered is None:
+                return None
+            program, details = rendered
+            matched_results.append(result)
+            lines.append(f"{program} ({audience_label(category)}): {details}.")
+        if not matched_results:
+            return None
+        return ChatResponse(
+            answer="\n".join(lines),
+            sources=_sources_from(matched_results),
+            confidence=(
+                _confidence_from(matched_results)
+                if len(matched_results) == len(requested_categories)
+                else "low"
+            ),
+            language=language,
+        )
+    result = next(
+        (
+            candidate
+            for candidate in table_results
+            if candidate.chunk.category.casefold() == requested_categories[0]
+        ),
+        table_results[0],
+    )
+    rendered = _tuition_result_details(result.chunk)
+    if rendered is None:
         return None
-    fields = [
-        ("Payable During Admission", "payable during admission"),
-        ("Average Semester Fees", "average semester fees"),
-        ("Total Tuition Fees", "total tuition fees"),
-        ("Total Program Fees", "total program fees"),
-    ]
-    values = [
-        (label, _fee_amount(row.get(header, ""), chunk.category))
-        for header, label in fields
-        if row.get(header, "").strip()
-    ]
-    if not values:
-        return None
-    program = str(chunk.program or row.get("Full Program Name") or "the program")
-    details = "; ".join("{} — {}".format(label, value) for label, value in values)
+    program, details = rendered
     if language == "bn":
         answer = "{}-এর অফিসিয়াল ফি টেবিল: {}।".format(program, details)
     elif language == "banglish":
@@ -490,6 +629,37 @@ def _structured_response(
         confidence=_confidence_from(results),
         language=language,
     )
+
+
+def _tuition_result_details(chunk: Any) -> Optional[tuple[str, str]]:
+    """Extract labeled fee values from one verified structured table row."""
+
+    row = _table_row(chunk.content)
+    if row is None:
+        return None
+    if chunk.category.casefold() == "international_admission":
+        fields = [
+            ("1st Yr During Admission", "first year during admission"),
+            ("Total Tuition Fees", "total tuition fees"),
+            ("Total Program Fees", "total program fees"),
+        ]
+    else:
+        fields = [
+            ("Payable During Admission", "payable during admission"),
+            ("Average Semester Fees", "average semester fees"),
+            ("Total Tuition Fees", "total tuition fees"),
+            ("Total Program Fees", "total program fees"),
+        ]
+    values = [
+        (label, _fee_amount(row.get(header, ""), chunk.category))
+        for header, label in fields
+        if row.get(header, "").strip()
+    ]
+    if not values:
+        return None
+    program = str(chunk.program or row.get("Full Program Name") or "the program")
+    details = "; ".join("{} — {}".format(label, value) for label, value in values)
+    return program, details
 
 
 def _program_catalog_response(

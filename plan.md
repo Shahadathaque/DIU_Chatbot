@@ -13,12 +13,12 @@ early.
 
 | Area | Status |
 | --- | --- |
-| Scraping (Phase 4) | Done — registry-driven, robots/rate-limit respecting, 18 audited sources |
-| Cleaning (Phase 5) | Done — traceable cleaned v2 records, validation passes |
+| Scraping (Phase 4) | Done — registry-driven, robots/rate-limit respecting, 24 audited sources covering all admission-menu sections |
+| Cleaning (Phase 5) | Done — traceable 24-record refresh snapshot; provenance and validation pass |
 | RAG chunking | Done — `rag/chunker.py`, integrity-checked manifest, tables + PDF pages |
 | Embeddings | Done — `intfloat/multilingual-e5-base` (768-d) via `rag/embeddings.py` |
 | Vector store | Done — pgvector (production) + JSON/in-memory (dev/test) |
-| Retrieval | **Final audit passed locally** — centralized canonical program resolution, exact metadata precedence, UG/PG separation, deterministic structured tuition answers, unchanged global thresholds, and 50/50 catalog coverage; deployment pending |
+| Retrieval | **Final local SQA passed** — 84/84 admission variants, 51/51 adversarial query cases, 211/211 local tuition variants across 50 programs, and 45/45 international audience/currency checks pass; an earlier 21/21 primary-query run passed against the refreshed 317-chunk pgvector index, while the expanded live audit is pending an environment with database network access |
 | Backend API | **TASK-01 done** — `/api/chat`, `/api/programs`, `/api/sources` live against the existing retriever + local KB; `/api/eligibility` was contract-only until TASK-03 |
 | LLM generation | **TASK-02 + TASK-DEMO done** — grounded Qwen generation; deterministic rendering protects tuition-table labels and SSC/HSC waiver rows from small-model unit/column errors |
 | Eligibility engine | **TASK-03 done** — `eligibility/` deterministic rule engine (R-001 program registry, R-002 diploma pathway); `POST /api/eligibility` live; returns `insufficient_information` where official evidence cannot establish eligibility |
@@ -58,19 +58,24 @@ early.
 
 ### Current
 
-The final comprehensive audit is implemented and locally verified. Backend,
-frontend, cleaned/raw data, runtime catalog derivation, automatic-refresh safety,
-and real hosted pgvector retrieval checks pass. The existing public deployment is
-healthy; the audited changes have not been deployed. The private held-out research
-evaluation artifact is absent locally, so its artifact-dependent integrations are
-intentionally skipped.
+The final admission-information SQA task is implemented and locally verified.
+All 24 official sources were previously recollected and validated and 317 chunks
+were published atomically. The expanded deterministic audit passes 84/84
+natural-language variants across all 21 sections; the adversarial audit passes
+51/51 cases; the cleaned local tuition audit passes 211/211 query variants across
+50/50 programs; and the international audience audit passes 45/45 checks across
+all nine USD table rows. Standard verification passes 595 backend tests and 36 frontend tests plus Python
+compilation, lint, TypeScript, and production build. The private held-out research
+evaluation artifact is absent locally, so its 41 artifact-dependent integrations
+remain intentionally skipped. The expanded live pgvector audit was attempted but
+could not reach PostgreSQL from the sandbox. Repository code changes have not
+been committed or deployed.
 
 ### Next
 
-Review and stage only the audited implementation files, commit deliberately, add
-the two GitHub Actions secrets, run the refresh workflow manually once, then deploy
-Render/Vercel and repeat the public regression matrix. Restore the private held-out
-evaluation dataset before running the full research experiment.
+No next engineering task is selected. Restore the private held-out evaluation
+dataset before running the full research experiment. Commit and deploy this audited
+change only when deliberately requested.
 
 ### Key gaps blocking a complete product
 1. ~~No chat endpoint — the retriever exists but is never called from the API.~~ **Resolved in TASK-01** (`/api/chat` now calls the retriever).
@@ -171,6 +176,32 @@ Deliverable: chat returns real generated answers grounded in retrieved evidence.
 
 _Every time something is changed/added/removed during execution (code, data, config,
 scope), record it here with a short reason._
+
+- **2026-08-23** - Repaired cross-topic query resolution after adversarial manual
+  testing exposed broad-marker failures. Program words now trigger catalog lookup
+  only for explicit discovery requests; evidence-backed claims use claim-focus
+  compatibility; deadlines outrank generic “apply” wording; payment, financial
+  aid, local/international scholarships, waivers, and current schedule/result
+  scopes remain separate. The local-scholarship formatter is now intent-bound and
+  cannot render international or financial-aid evidence. Expanded the 21-section
+  audit to at least four English/Bangla/Banglish/typo/short variants per section.
+  Verification: 547 backend tests passed, 41 private-artifact integrations skipped,
+  34 frontend tests plus lint/typecheck/build passed, real pgvector coverage passed
+  21/21, and the tuition catalog audit passed 50/50. No threshold or changing DIU
+  fact was altered; nothing was committed or deployed.
+
+- **2026-08-23** - Completed full DIU admission-information coverage. Expanded the
+  official registry from 18 to 24 sources; separated calculator, financial-aid,
+  and international-scholarship categories; added deterministic multilingual
+  intents for every missing admission/guideline/funding section; and added exact
+  category-scoped retrieval so short authoritative pages cannot be displaced by
+  generic semantic matches. Partial title-only official pages now produce an
+  insufficient-information response with the verified link and never invoke the
+  generator. Fresh collection succeeded 24/24, validation produced 24 records,
+  atomic publication produced 317 chunks (299 embeddings reused, 18 embedded),
+  and the 21/21 real pgvector coverage audit passed without lowering global
+  thresholds. Standard backend suite: 519 passed; frontend: 34 passed plus clean
+  lint/typecheck/build. Forty-one private-artifact integration tests remain skipped.
 
 - **2026-08-22** - Completed the final comprehensive production-readiness audit.
   Added bounded provider retries and rate-limit storage, exact fail-closed CORS and
@@ -718,3 +749,28 @@ scope), record it here with a short reason._
   returned all 13 Science and Information Technology rows and no other faculty for
   `fsit department`. Verification passed with 482 backend tests (41 integration
   tests deselected), Python compilation, and clean diff validation.
+- **2026-08-23** — Final admission-quality SQA repair completed locally. Added
+  span-aware canonical program resolution, strict undergraduate/postgraduate and
+  local/international compatibility, deterministic multi-program tuition
+  rendering, universal-funding fact checks, safer standalone-versus-follow-up
+  context handling, and a bounded pre-token frontend stream retry. Expanded the
+  admission audit to 84 variants and added a reusable adversarial query-quality
+  audit. Final test and audit counts are recorded in the completion
+  report; no commit, push, deployment, threshold reduction, or tuition-data
+  mutation was performed.
+- **2026-08-23** — Final adversarial expansion completed locally. Natural query
+  processing now covers admission notices, seat-plan punctuation, online/enrol
+  wording, payment noun phrases, Bangla/Banglish result/application/payment
+  variants, and program-specific cost paraphrases. Explicit local-plus-
+  international tuition comparisons retain both evidence lanes, while an
+  international request that mentions BDT remains international and is never
+  silently converted. Deterministic rendering labels local BDT and international
+  USD rows separately. Verification passed with 595 backend tests, 36 frontend
+  tests, 84/84 admission variants, 51/51 query-quality cases, 211/211 local
+  tuition queries across 50 programs, and 45/45 international audience checks.
+  The guarded production knowledge refresh fetched and validated 24/24 approved
+  sources, published 317 chunks and 24 runtime sources atomically, and reused
+  299 existing embeddings. Post-refresh live pgvector verification passed all
+  84/84 admission retrieval variants and 211/211 local tuition queries across
+  all 50 structured programs. Commit, push, and deployment are authorized only
+  after these verification gates pass.

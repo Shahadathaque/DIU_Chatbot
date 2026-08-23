@@ -19,8 +19,15 @@ Default retrieval permits records only when all of these conditions hold:
 - `extraction_status` is `success`.
 
 Historical, uncertain, manual-review, and partial records are stored rather than
-discarded. Each cohort requires its explicit search option. Authority adjustments
-then ensure current/stable evidence ranks above opted-in lower-authority evidence.
+discarded. Each cohort requires its explicit search option, except for a narrow
+exact-topic fallback: when a user explicitly names a one-to-one official section
+(for example life insurance or guardian guidelines), the retriever may return that
+section's partial title-only record solely as verified-link evidence. Chat then
+skips generation, returns low confidence, and states that sufficient current
+information is unavailable.
+
+Authority adjustments
+ensure current/stable evidence ranks above opted-in lower-authority evidence.
 Retrieval also enforces a raw semantic-similarity floor before authority boosts,
 uses a small transparent admission-domain gate for unrelated questions, suppresses
 near-duplicate results, and supports conservative program aliases such as `CSE`.
@@ -114,12 +121,29 @@ spacing and Unicode, recognizes common English, Bangla, and Banglish admission
 wording, preserves an explicitly named program, and produces an
 evidence-oriented retrieval query for these intents:
 
-- application process and diploma application pathway;
+- application process, online application, and diploma application pathway;
 - required documents;
 - tuition and fees;
-- scholarships and waivers;
+- local/international scholarships, financial aid, waivers, and the waiver calculator;
 - program catalog and program information;
-- eligibility guidance, deadlines, contacts, and international admission.
+- eligibility guidance, deadlines, contacts, and international admission;
+- admission-test schedule, seat plan, and result;
+- credit transfer, guardian guidance, payment guidance, and life insurance.
+
+Program words no longer imply a catalog request by themselves. Catalog routing
+requires list/discovery wording such as “show available programs” or “what
+programs does DIU offer?”. Claims such as “all undergraduate students receive a
+free laptop” use a fact-check path instead. That path requires the distinctive
+claim terms to occur in compatible official evidence, preventing a generic
+program grid from being presented as proof. If the claim is present in an
+official source, the assistant may answer it from that source; otherwise it
+returns insufficient information.
+
+Specific intents are resolved before broad ones. In particular, deadlines beat
+generic application wording, international scholarships remain distinct from
+local scholarships and financial aid, and payment instructions remain distinct
+from fee amounts. Explicit faculty, semester, program, or year terms on current
+schedule/result/deadline questions must survive evidence filtering.
 
 The retriever still applies the official-source, freshness, extraction-quality,
 program, and fact-compatibility gates after semantic search. Eligibility
@@ -144,6 +168,69 @@ These measurements explain the earlier refusals and demonstrate improvement
 without weakening the global evidence gate. Unsupported topics, another named
 university, personal application status, and guaranteed/secret policy claims
 still return no evidence.
+
+Exact one-to-one topics use a category-scoped candidate lane before generic
+semantic ranking. Only candidates from the intent's canonical category are
+threshold-exempt, so a short official page is not crowded out by a long generic
+admission page. The global thresholds and unrelated-query behavior are unchanged.
+
+## Complete admission-section audit
+
+`scripts/audit_admission_coverage.py` checks every one of the 21 admission-menu
+sections against its deterministic intent, registered evidence category, and,
+with `--retrieval`, the configured real vector store. Each section has a primary
+query plus at least three English, Bangla, Banglish, typo, or short-form variants:
+
+```bash
+python scripts/audit_admission_coverage.py
+python scripts/audit_admission_coverage.py --retrieval
+```
+
+On 2026-08-23, the deterministic mode passed all 21 sections and all 84 query
+variants. A prior primary-query-only retrieval run passed 21/21 against the
+refreshed 317-chunk pgvector index. The expanded 84-query retrieval mode must be
+run from an environment that can reach the configured database; it is not
+silently treated as passed when network access is unavailable. The audit covers
+admission overview/schedule/seat plan/results, contacts/programs/application,
+all guideline topics, local/international tuition and scholarships, payment,
+waivers/calculator, financial aid, and life insurance. The separate cleaned-table
+tuition audit checks 211 harmless naming variants across all 50 canonical
+fee-bearing programs, including undergraduate/postgraduate name ambiguity. The
+international tuition audit adds 45 audience-isolation checks across every USD
+row and verifies that explicit local/international comparisons retrieve both
+compatible rows without currency conversion.
+
+`scripts/audit_query_quality.py` adds an adversarial deterministic gate for typo,
+short-query, intent-conflict, audience, follow-up, unsupported-claim, and
+multi-program cases. Each failure prints the query, expected resolution, and
+actual resolution instead of reducing a quality problem to a single aggregate.
+
+## Program compatibility and multi-program tuition
+
+Program aliases are normalized for punctuation, whitespace, `and`/`&`, and
+common degree spelling variants. Alias matches retain their query spans. The
+resolver keeps the most-specific alias within an overlapping span while
+preserving independent program mentions elsewhere in the same query. This makes
+`Information Technology and Management` beat `management`, without causing a
+different-length pair such as `CSE and Master of Pharmacy` to lose one program.
+
+An explicit postgraduate marker cannot fall back to the undergraduate version.
+For program-specific tuition questions, canonical program and degree-level
+compatibility take precedence over generic semantic similarity. Multi-program
+tuition answers are assembled deterministically from each compatible structured
+fee row, so a text generator cannot omit one requested program. No fee value is
+hard-coded outside the cleaned tuition evidence.
+
+Tuition audience resolution distinguishes explicit student scope from a requested
+display currency. “Local and international” keeps both structured evidence lanes;
+“international fees in BDT” remains international evidence and preserves the USD
+values actually published by DIU. Deterministic responses label each audience and
+currency instead of merging or converting them.
+
+Universal funding claims such as “every undergraduate student gets a
+scholarship” use fact-check compatibility rather than the generic scholarship
+list path. International document requests likewise cannot fall back to a local
+admission checklist.
 
 ### Evidence-backed product examples
 

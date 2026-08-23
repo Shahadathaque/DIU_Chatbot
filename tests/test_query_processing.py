@@ -4,13 +4,15 @@ from __future__ import annotations
 
 import pytest
 
-from rag.query_processing import QueryIntent, analyze_query
+from rag.query_processing import QueryIntent, analyze_query, tuition_audience
 
 
 @pytest.mark.parametrize(
     ("query", "intent"),
     [
         ("How do I apply?", QueryIntent.APPLICATION_PROCESS),
+        ("Apply online", QueryIntent.ONLINE_APPLICATION),
+        ("অনলাইনে আবেদন", QueryIntent.ONLINE_APPLICATION),
         ("application process", QueryIntent.APPLICATION_PROCESS),
         ("What steps does DIU's admission flowchart show?", QueryIntent.APPLICATION_PROCESS),
         ("vorti kivabe korbo?", QueryIntent.APPLICATION_PROCESS),
@@ -137,3 +139,160 @@ def test_eligibility_language_variants_are_detected(
     query: str, language: str
 ) -> None:
     assert analyze_query(query).language == language
+
+
+@pytest.mark.parametrize(
+    ("query", "intent"),
+    [
+        ("Admission test schedule", QueryIntent.ADMISSION_TEST_SCHEDULE),
+        ("bhorti test date kobe?", QueryIntent.ADMISSION_TEST_SCHEDULE),
+        ("ভর্তি পরীক্ষার সময়সূচি", QueryIntent.ADMISSION_TEST_SCHEDULE),
+        ("seat plan", QueryIntent.ADMISSION_TEST_SEAT_PLAN),
+        ("ভর্তি পরীক্ষার সিট প্ল্যান", QueryIntent.ADMISSION_TEST_SEAT_PLAN),
+        ("Admission test result", QueryIntent.ADMISSION_TEST_RESULT),
+        ("bhorti test result", QueryIntent.ADMISSION_TEST_RESULT),
+        ("credit transfer guidelines", QueryIntent.CREDIT_TRANSFER),
+        ("ক্রেডিট ট্রান্সফার নিয়ম", QueryIntent.CREDIT_TRANSFER),
+        ("guidelines for guardians", QueryIntent.GUARDIAN_GUIDELINES),
+        ("guardian guide", QueryIntent.GUARDIAN_GUIDELINES),
+        ("payment guidelines", QueryIntent.PAYMENT_GUIDELINES),
+        ("payment kivabe korbo", QueryIntent.PAYMENT_GUIDELINES),
+        ("international student scholarship", QueryIntent.INTERNATIONAL_SCHOLARSHIP),
+        ("বিদেশি শিক্ষার্থীদের স্কলারশিপ", QueryIntent.INTERNATIONAL_SCHOLARSHIP),
+        ("waiver and tuition fee calculator", QueryIntent.WAIVER_CALCULATOR),
+        ("waiver hisab", QueryIntent.WAIVER_CALCULATOR),
+        ("financial aid", QueryIntent.FINANCIAL_AID),
+        ("financial support", QueryIntent.FINANCIAL_AID),
+        ("life insurance", QueryIntent.LIFE_INSURANCE),
+        ("জীবন বীমা", QueryIntent.LIFE_INSURANCE),
+        ("payment", QueryIntent.PAYMENT_GUIDELINES),
+        ("insurance", QueryIntent.LIFE_INSURANCE),
+        ("result", QueryIntent.ADMISSION_TEST_RESULT),
+        ("schedule", QueryIntent.ADMISSION_TEST_SCHEDULE),
+        ("আন্তর্জাতিক শিক্ষার্থীদের বৃত্তি", QueryIntent.INTERNATIONAL_SCHOLARSHIP),
+    ],
+)
+def test_complete_admission_section_queries_have_dedicated_intents(
+    query: str, intent: QueryIntent
+) -> None:
+    analysis = analyze_query(query)
+
+    assert analysis.intent is intent
+    assert analysis.is_admission_query
+    assert analysis.retrieval_query.casefold().startswith("diu")
+
+
+def test_international_scholarship_is_not_rewritten_as_local() -> None:
+    analysis = analyze_query("Scholarships for international students")
+
+    assert analysis.intent is QueryIntent.INTERNATIONAL_SCHOLARSHIP
+    assert "international students" in analysis.retrieval_query.casefold()
+    assert "local students" not in analysis.retrieval_query.casefold()
+
+
+def test_universal_scholarship_claim_uses_fact_compatibility_not_list_intent() -> None:
+    analysis = analyze_query(
+        "Does every undergraduate student receive a scholarship?"
+    )
+
+    assert analysis.intent is QueryIntent.FACT_CHECK
+    assert "every undergraduate student" in analysis.retrieval_query.casefold()
+
+
+@pytest.mark.parametrize(
+    ("query", "intent"),
+    [
+        ("Last Date to Apply", QueryIntent.DEADLINE),
+        ("apply er last date kobe", QueryIntent.DEADLINE),
+        ("How can I pay my admission fee?", QueryIntent.PAYMENT_GUIDELINES),
+        ("tuition fee payment", QueryIntent.PAYMENT_GUIDELINES),
+        ("admission-fee payment method", QueryIntent.PAYMENT_GUIDELINES),
+        ("admission fee kivabe dibo", QueryIntent.PAYMENT_GUIDELINES),
+        ("টাকা কিভাবে দিব", QueryIntent.PAYMENT_GUIDELINES),
+        ("admission office number", QueryIntent.CONTACT),
+        ("Can I transfer credits?", QueryIntent.CREDIT_TRANSFER),
+        ("Information for parents", QueryIntent.GUARDIAN_GUIDELINES),
+        ("funding for foreign applicants", QueryIntent.INTERNATIONAL_SCHOLARSHIP),
+        ("tuition discount", QueryIntent.WAIVER),
+        ("When is the admission test?", QueryIntent.ADMISSION_TEST_SCHEDULE),
+        ("Can I apply to CSE?", QueryIntent.ELIGIBILITY),
+        ("Programs", QueryIntent.PROGRAM_CATALOG),
+        ("Does DIU offer New Program?", QueryIntent.PROGRAM_INFO),
+        ("seatplan", QueryIntent.ADMISSION_TEST_SEAT_PLAN),
+        ("admission-test seat-plan", QueryIntent.ADMISSION_TEST_SEAT_PLAN),
+        ("ভর্তি পরীক্ষার ফল", QueryIntent.ADMISSION_TEST_RESULT),
+        ("online admission", QueryIntent.ONLINE_APPLICATION),
+        ("on-line admission form", QueryIntent.ONLINE_APPLICATION),
+        ("current admission notice", QueryIntent.DEADLINE),
+        ("কিভাবে ভর্তি হব", QueryIntent.APPLICATION_PROCESS),
+        ("How do I enroll?", QueryIntent.APPLICATION_PROCESS),
+        ("bideshi student admission", QueryIntent.INTERNATIONAL),
+        ("bideshi student scholarship", QueryIntent.INTERNATIONAL_SCHOLARSHIP),
+        ("student visa", QueryIntent.INTERNATIONAL),
+        ("How much do I pay for CSE?", QueryIntent.TUITION),
+        ("CSE price", QueryIntent.TUITION),
+        ("CSE er jonno koto dite hobe", QueryIntent.TUITION),
+        ("What do I need for admission?", QueryIntent.DOCUMENTS),
+    ],
+)
+def test_natural_section_paraphrases_keep_their_specific_intent(
+    query: str, intent: QueryIntent
+) -> None:
+    assert analyze_query(query).intent is intent
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "All Students of Undergraduate Program Will Get a Laptop Free.",
+        "Does DIU give every undergraduate student a free laptop?",
+        "Is the laptop free for undergraduate students?",
+        "Which program is best?",
+    ],
+)
+def test_program_words_inside_claims_do_not_trigger_the_catalog(query: str) -> None:
+    analysis = analyze_query(query)
+
+    assert analysis.intent is QueryIntent.FACT_CHECK
+    assert analysis.is_admission_query
+    assert "complete program catalog" not in analysis.retrieval_query.casefold()
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "Show available programs",
+        "List all undergraduate programs",
+        "What programs does DIU offer?",
+        "কি কি প্রোগ্রাম আছে",
+    ],
+)
+def test_explicit_catalog_requests_still_use_catalog_intent(query: str) -> None:
+    assert analyze_query(query).intent is QueryIntent.PROGRAM_CATALOG
+
+
+@pytest.mark.parametrize(
+    ("query", "expected"),
+    [
+        ("local CSE tuition fees", "local"),
+        ("international CSE tuition fees", "international"),
+        ("CSE tuition fees in USD", "international"),
+        ("CSE tuition fees in BDT", "local"),
+        ("local and international CSE tuition fees", "both"),
+        ("international CSE tuition fees in BDT", "international"),
+    ],
+)
+def test_tuition_audience_resolution_preserves_explicit_scope(
+    query: str, expected: str
+) -> None:
+    assert tuition_audience(query) == expected
+
+
+def test_mixed_audience_tuition_canonical_query_keeps_bdt_and_usd_lanes() -> None:
+    analysis = analyze_query("Compare local and international CSE tuition fees")
+
+    assert analysis.intent is QueryIntent.TUITION
+    assert "local student" in analysis.retrieval_query.casefold()
+    assert "international student" in analysis.retrieval_query.casefold()
+    assert "bdt" in analysis.retrieval_query.casefold()
+    assert "usd" in analysis.retrieval_query.casefold()

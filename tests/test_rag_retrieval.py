@@ -7,6 +7,7 @@ from typing import List, Sequence
 import pytest
 
 from rag.config import RagSettings
+from rag.query_processing import QueryIntent, analyze_query
 from rag.retriever import (
     Retriever,
     _chunk_program_matches,
@@ -712,11 +713,10 @@ def test_specific_catalog_phrase_wins_over_broader_program_marker() -> None:
         "B.Sc. in Civil Engineering (Diploma Holder)",
         "ce",
     )
-    from rag.retriever import _PROGRAM_LIST_PATTERN
-
-    assert not _PROGRAM_LIST_PATTERN.search(
+    analysis = analyze_query(
         "Which faculty is it under. Program: Bachelor of Business Administration."
     )
+    assert analysis.intent is QueryIntent.PROGRAM_INFO
 
 
 def test_program_list_with_named_faculty_returns_only_that_faculty_rows() -> None:
@@ -874,6 +874,83 @@ def test_bdt_tuition_query_excludes_usd_and_program_catalog_evidence() -> None:
 
     assert [result.chunk.chunk_id for result in results] == ["cse-bdt"]
     assert "$" not in results[0].chunk.content
+
+
+def test_mixed_local_and_international_tuition_returns_both_exact_rows() -> None:
+    """A comparison request must retain both currencies and one exact program."""
+
+    program = "B. Sc. in Computer Science and Engineering"
+    local = replace(
+        knowledge_chunk(
+            "cse-local-mixed",
+            source_id="DIU-FEE-001",
+            content=(
+                "Full Program Name | Total Tuition Fees | Total Program Fees\n"
+                f"{program} | 782,250 | 1,020,450"
+            ),
+            category="tuition_and_fees",
+            program=program,
+        ),
+        content_type="table",
+    )
+    international = replace(
+        knowledge_chunk(
+            "cse-international-mixed",
+            source_id="DIU-FEE-002",
+            content=(
+                "Full Program Name | Total Tuition Fees | Total Program Fees\n"
+                f"{program} | $ 7,847 | $ 10,250"
+            ),
+            category="international_admission",
+            program=program,
+        ),
+        content_type="table",
+    )
+    store = _store()
+    store.upsert_chunks([local, international], [[1.0, 0.0], [1.0, 0.0]])
+    retriever = Retriever(FakeEmbedder(), store, min_relevance_score=0.72)
+
+    results = retriever.retrieve(
+        "Compare local and international CSE tuition fees", top_k=5
+    )
+
+    assert {result.chunk.chunk_id for result in results} == {
+        "cse-local-mixed",
+        "cse-international-mixed",
+    }
+
+
+def test_explicit_international_tuition_in_bdt_does_not_leak_local_row() -> None:
+    program = "B. Sc. in Computer Science and Engineering"
+    local = replace(
+        knowledge_chunk(
+            "cse-local-currency-conflict",
+            content="CSE | Total Tuition Fees | 782,250",
+            category="tuition_and_fees",
+            program=program,
+        ),
+        content_type="table",
+    )
+    international = replace(
+        knowledge_chunk(
+            "cse-international-currency-conflict",
+            content="CSE | Total Tuition Fees | $ 7,847",
+            category="international_admission",
+            program=program,
+        ),
+        content_type="table",
+    )
+    store = _store()
+    store.upsert_chunks([local, international], [[1.0, 0.0], [1.0, 0.0]])
+    retriever = Retriever(FakeEmbedder(), store, min_relevance_score=0.72)
+
+    results = retriever.retrieve(
+        "International CSE tuition fees in BDT", top_k=5
+    )
+
+    assert [result.chunk.chunk_id for result in results] == [
+        "cse-international-currency-conflict"
+    ]
 
 
 def test_program_specific_tuition_does_not_fall_back_to_another_program() -> None:
@@ -1094,6 +1171,18 @@ def test_specific_full_name_gets_raw_lane_even_when_broad_alias_matches() -> Non
 
     assert [result.chunk.program for result in results] == [target_program]
     assert any("major in data science" in query for query in embedder.queries)
+
+
+def test_multiple_program_markers_keep_independent_mentions_of_different_lengths() -> None:
+    assert _named_program_markers(
+        "Compare CSE and Master of Pharmacy tuition fees"
+    ) == ["cse", "mpharm"]
+
+
+def test_broad_alias_inside_specific_program_is_not_returned_as_second_program() -> None:
+    assert _named_program_markers(
+        "Information Technology and Management tuition fees"
+    ) == ["itm"]
 
 
 def test_exact_catalog_compatibility_can_select_base_program_below_semantic_threshold() -> None:

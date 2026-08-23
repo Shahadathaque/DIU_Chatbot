@@ -116,6 +116,32 @@ export async function streamChatMessage(
 ): Promise<ChatResponse> {
   if (isMockMode) return sendChatMessage(payload);
 
+  let receivedToken = false;
+  const trackedOnToken = (token: string, full: string) => {
+    receivedToken = true;
+    onToken(token, full);
+  };
+  try {
+    return await streamChatMessageOnce(payload, trackedOnToken);
+  } catch (error) {
+    if (!receivedToken && isRetryableInitialStreamError(error)) {
+      return streamChatMessageOnce(payload, trackedOnToken);
+    }
+    throw error;
+  }
+}
+
+function isRetryableInitialStreamError(error: unknown): boolean {
+  return error instanceof ApiError && (
+    error.status === undefined || error.status >= 500
+  );
+}
+
+async function streamChatMessageOnce(
+  payload: ChatRequest,
+  onToken: (token: string, full: string) => void,
+): Promise<ChatResponse> {
+
   const controller = new AbortController();
   const timeout = window.setTimeout(
     () => controller.abort(),
@@ -155,6 +181,7 @@ export async function streamChatMessage(
       if (event === "error") {
         throw new ApiError(
           data.error?.message || "The admission service was interrupted. Please try again.",
+          response.status,
         );
       }
       if (data.token) onToken(data.token, data.full ?? data.token);

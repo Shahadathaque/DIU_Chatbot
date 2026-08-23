@@ -284,4 +284,64 @@ describe("real-mode API client", () => {
       message: "The admission service was interrupted. Please try again.",
     });
   });
+
+  it("retries one transient cold-start stream closure before any token", async () => {
+    const { streamChatMessage } = await loadRealApi();
+    const encoder = new TextEncoder();
+    const incomplete = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(
+          encoder.encode('event: status\ndata: {"status":"processing"}\n\n'),
+        );
+        controller.close();
+      },
+    });
+    const completed = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(
+          encoder.encode(
+            'event: done\ndata: {"response":{"answer":"Recovered.","sources":[],"confidence":"high","language":"en"}}\n\n',
+          ),
+        );
+        controller.close();
+      },
+    });
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: true, status: 200, body: incomplete } as Response)
+      .mockResolvedValueOnce({ ok: true, status: 200, body: completed } as Response);
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await streamChatMessage(
+      { message: "Hello", language: "en" },
+      () => undefined,
+    );
+
+    expect(response.answer).toBe("Recovered.");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not replay a stream after an answer token was received", async () => {
+    const { streamChatMessage } = await loadRealApi();
+    const encoder = new TextEncoder();
+    const incomplete = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(
+          encoder.encode('data: {"token":"Partial","full":"Partial"}\n\n'),
+        );
+        controller.close();
+      },
+    });
+    const fetchMock = installFetchMock({
+      ok: true,
+      status: 200,
+      body: incomplete as unknown as ReadableStream<Uint8Array<ArrayBuffer>>,
+    });
+
+    await expect(
+      streamChatMessage({ message: "Hello", language: "en" }, () => undefined),
+    ).rejects.toMatchObject({
+      message: "The assistant returned an incomplete answer.",
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
 });

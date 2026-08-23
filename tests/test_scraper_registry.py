@@ -233,8 +233,18 @@ def test_filter_sources_combines_fields_url_and_limit() -> None:
 def test_repository_registry_is_valid_and_complete() -> None:
     sources = load_registry("data/source_registry.csv")
 
-    assert len(sources) == 18
+    assert len(sources) == 24
     assert all(isinstance(source.dynamic_page, bool) for source in sources)
     assert all(source.canonical_url.startswith("https://") for source in sources)
     assert {source.scrape_status for source in sources} == {"active", "manual_review"}
     assert all(source.currency_status for source in sources)
+    assert {
+        "admission_test_result",
+        "credit_transfer_guidelines",
+        "guardian_guidelines",
+        "payment_guidelines",
+        "international_scholarships",
+        "waiver_calculator",
+        "financial_aid",
+        "life_insurance",
+    } <= {source.category for source in sources}
