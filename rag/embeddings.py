@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import threading
 import time
 from typing import Any, Callable, Iterable, List, Optional, Protocol, Sequence
 
@@ -139,8 +140,10 @@ class OpenAICompatibleEmbedder:
         max_retries: int = 2,
         retry_backoff: float = 0.5,
         send_dimensions: bool = True,
+        unavailable_cooldown: float = 60.0,
         client: Optional[httpx.Client] = None,
         sleeper: Callable[[float], None] = time.sleep,
+        monotonic: Callable[[], float] = time.monotonic,
     ) -> None:
         if not api_base.strip():
             raise ValueError("embedding API base cannot be blank")
@@ -152,6 +155,8 @@ class OpenAICompatibleEmbedder:
             raise ValueError("embedding request interval cannot be negative")
         if not 0 <= max_retries <= 5 or retry_backoff < 0:
             raise ValueError("embedding retry settings are invalid")
+        if unavailable_cooldown < 0:
+            raise ValueError("embedding unavailable cooldown cannot be negative")
         self.model_name = model_name
         self.model_revision = model_revision
         self.dimension = dimension
@@ -163,8 +168,12 @@ class OpenAICompatibleEmbedder:
         self._max_retries = max_retries
         self._retry_backoff = retry_backoff
         self._send_dimensions = send_dimensions
+        self._unavailable_cooldown = unavailable_cooldown
+        self._unavailable_until = 0.0
+        self._availability_lock = threading.Lock()
         self._client = client
         self._sleep = sleeper
+        self._monotonic = monotonic
 
     def embed_documents(self, texts: Sequence[str]) -> List[List[float]]:
         values: List[List[float]] = []
@@ -183,6 +192,11 @@ class OpenAICompatibleEmbedder:
     def _request(self, texts: Sequence[str]) -> List[List[float]]:
         if not texts:
             return []
+        with self._availability_lock:
+            if self._monotonic() < self._unavailable_until:
+                raise EmbeddingUnavailableError(
+                    "embedding provider is temporarily unavailable"
+                )
         headers = {"Content-Type": "application/json"}
         if self._api_key:
             headers["Authorization"] = f"Bearer {self._api_key}"
@@ -208,16 +222,25 @@ class OpenAICompatibleEmbedder:
                 if attempt < self._max_retries:
                     self._sleep(self._retry_backoff * (2**attempt))
                     continue
+                self._mark_temporarily_unavailable()
                 raise EmbeddingUnavailableError(
                     f"embedding request failed: {error.__class__.__name__}"
                 ) from error
-            if response.status_code == 429 or response.status_code >= 500:
+            if response.status_code == 429:
+                # A quota/rate-limit response should immediately use the
+                # retriever's provider-independent lane. Retrying the same
+                # request delays the first answer and consumes more quota.
+                self._mark_temporarily_unavailable()
+                break
+            if response.status_code >= 500:
                 if attempt < self._max_retries:
                     self._sleep(_retry_delay(response, self._retry_backoff, attempt))
                     continue
             break
         assert response is not None
         if response.status_code >= 400:
+            if response.status_code >= 500:
+                self._mark_temporarily_unavailable()
             raise EmbeddingUnavailableError(
                 f"embedding provider returned HTTP {response.status_code}"
             )
@@ -250,7 +273,16 @@ class OpenAICompatibleEmbedder:
             )
         except (TypeError, ValueError) as error:
             raise EmbeddingUnavailableError(str(error)) from error
+        with self._availability_lock:
+            self._unavailable_until = 0.0
         return [_normalized(vector) for vector in vectors]
+
+    def _mark_temporarily_unavailable(self) -> None:
+        with self._availability_lock:
+            self._unavailable_until = max(
+                self._unavailable_until,
+                self._monotonic() + self._unavailable_cooldown,
+            )
 
 
 def create_embedder(

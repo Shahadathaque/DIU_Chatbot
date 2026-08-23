@@ -7,6 +7,7 @@ from types import SimpleNamespace
 import pytest
 
 from rag.config import DEFAULT_EMBEDDING_REVISION, PROJECT_ROOT, RagSettings
+from rag.models import SearchFilters
 from rag.vector_store import (
     LocalVectorStore,
     PgVectorStore,
@@ -167,3 +168,38 @@ def test_local_rebuild_restores_memory_and_file_when_write_fails(
     assert path.read_bytes() == original_file
     assert store.count() == 1
     assert store.search([1.0, 0.0])[0].chunk.chunk_id == "original"
+
+
+def test_list_chunks_applies_the_same_authority_filters_without_vectors(
+    tmp_path: Path,
+) -> None:
+    store = LocalVectorStore(
+        tmp_path / "store.json",
+        embedding_dimension=2,
+        embedding_model_name="fixture-model",
+        embedding_model_revision="fixture-revision",
+    )
+    current = knowledge_chunk("current", category="scholarships")
+    historical = knowledge_chunk(
+        "historical",
+        category="scholarships",
+        currency_status="historical",
+    )
+    unrelated = knowledge_chunk("unrelated", category="tuition_and_fees")
+    store.upsert_chunks(
+        [current, historical, unrelated],
+        [[1.0, 0.0], [1.0, 0.0], [1.0, 0.0]],
+    )
+
+    default = store.list_chunks(
+        filters=SearchFilters(category="scholarships")
+    )
+    opted_in = store.list_chunks(
+        filters=SearchFilters(
+            category="scholarships",
+            include_historical=True,
+        )
+    )
+
+    assert [chunk.chunk_id for chunk in default] == ["current"]
+    assert [chunk.chunk_id for chunk in opted_in] == ["current", "historical"]

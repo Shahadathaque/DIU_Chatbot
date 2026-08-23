@@ -10,7 +10,10 @@ from fastapi.testclient import TestClient
 from backend.api.chat import get_chat_service
 from backend.main import app
 from backend.services.chat_service import ChatService, build_grounded_messages
+from rag.embeddings import EmbeddingUnavailableError
 from rag.generator import GeneratorUnavailableError
+from rag.retriever import Retriever
+from rag.vector_store import InMemoryVectorStore
 from tests.rag_helpers import knowledge_chunk
 
 
@@ -49,6 +52,17 @@ class _FakeGenerator:
 class _BrokenGenerator:
     def generate(self, messages, **kwargs) -> str:
         raise GeneratorUnavailableError("boom")
+
+
+class _UnavailableEmbedder:
+    """Embedding provider fixture representing an exhausted hosted quota."""
+
+    dimension = 2
+    model_name = "fixture-model"
+    model_revision = "fixture-revision"
+
+    def embed_query(self, query: str) -> List[float]:
+        raise EmbeddingUnavailableError("embedding provider returned HTTP 429")
 
 
 class _Result:
@@ -226,6 +240,55 @@ def test_bare_faculty_name_returns_its_structured_program_catalog() -> None:
     assert "Graduate Studies programs" in body["answer"]
     assert all(name in body["answer"] for name in names)
     assert body["sources"]
+    _reset_overrides()
+
+
+def test_chat_api_stays_grounded_when_embedding_provider_quota_is_exhausted() -> None:
+    """A provider 429 must degrade retrieval, not become a public API 500."""
+
+    programs = [
+        "Master of Teaching in Digital Education",
+        "Postgraduate Diploma of Teaching in Digital Education",
+    ]
+    chunks = [
+        replace(
+            replace(
+                knowledge_chunk(
+                    f"graduate-{index}",
+                    source_id="DIU-PROG-001",
+                    content=f"{name} | Graduate Studies",
+                    category="undergraduate_programs",
+                    program=name,
+                ),
+                faculty="Graduate Studies",
+            ),
+            content_type="table",
+        )
+        for index, name in enumerate(programs)
+    ]
+    store = InMemoryVectorStore(
+        embedding_dimension=2,
+        embedding_model_name="fixture-model",
+        embedding_model_revision="fixture-revision",
+    )
+    store.upsert_chunks(chunks, [[1.0, 0.0]] * len(chunks))
+    retriever = Retriever(
+        _UnavailableEmbedder(),
+        store,
+        max_results_per_source=10,
+    )
+    app.dependency_overrides[get_chat_service] = lambda: ChatService(retriever)
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/chat",
+        json={"message": "Graduate Studies", "language": "en"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["sources"]
+    assert all(program in body["answer"] for program in programs)
     _reset_overrides()
 
 

@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import re
+import threading
 import unicodedata
 import math
 from collections import Counter
 from typing import Any, Iterable, List, Optional, Sequence
 
 from rag.config import RagSettings, get_rag_settings
-from rag.embeddings import Embedder, create_embedder
+from rag.embeddings import EmbeddingUnavailableError, Embedder, create_embedder
 from rag.faculty_resolution import faculty_names_match, matched_faculty_phrase
 from rag.models import KnowledgeChunk, SearchFilters, SearchResult, VectorMatch
 from rag.program_resolution import (
@@ -265,6 +266,8 @@ class Retriever:
         self.candidate_multiplier = candidate_multiplier
         self.max_results_per_source = max_results_per_source
         self.reranker = reranker
+        self._lexical_chunks_cache: dict[SearchFilters, List[KnowledgeChunk]] = {}
+        self._lexical_cache_lock = threading.RLock()
 
     def retrieve(
         self,
@@ -306,7 +309,6 @@ class Retriever:
         intent_query = analysis.normalized_query
         program_list_query = analysis.intent is QueryIntent.PROGRAM_CATALOG
         normalized = analysis.retrieval_query
-        query_embedding = self.embedder.embed_query(normalized)
         filters = SearchFilters(
             category=category,
             program=program,
@@ -316,11 +318,48 @@ class Retriever:
             include_partial=include_partial,
         )
         candidate_limit = max(top_k * self.candidate_multiplier, top_k)
+        lexical_fallback_active = False
+
+        def search_lane(
+            lane_query: str,
+            *,
+            lane_filters: SearchFilters,
+            lane_limit: int = candidate_limit,
+        ) -> List[VectorMatch]:
+            """Search one retrieval lane, degrading only provider dependency.
+
+            Once the embedding provider reports an availability failure, all
+            remaining lanes in this request use the same deterministic lexical
+            candidate path. Authority and metadata filtering still occurs in
+            the vector store and the normal compatibility gates still run
+            below. Programming/configuration errors are intentionally not
+            swallowed.
+            """
+
+            nonlocal lexical_fallback_active
+            if not lexical_fallback_active:
+                try:
+                    lane_embedding = self.embedder.embed_query(lane_query)
+                except EmbeddingUnavailableError:
+                    lexical_fallback_active = True
+                else:
+                    return self.vector_store.search(
+                        lane_embedding,
+                        top_k=lane_limit,
+                        filters=lane_filters,
+                    )
+            chunks = self._list_lexical_chunks(lane_filters)
+            return self._lexical_candidates(
+                lane_query,
+                chunks,
+                top_k=lane_limit,
+            )
+
         authoritative_filters = SearchFilters(category=category, program=program)
-        authoritative_candidates = self.vector_store.search(
-            query_embedding,
-            top_k=candidate_limit,
-            filters=authoritative_filters,
+        authoritative_candidates = search_lane(
+            normalized,
+            lane_limit=candidate_limit,
+            lane_filters=authoritative_filters,
         )
         if any(
             (
@@ -330,16 +369,46 @@ class Retriever:
                 include_partial,
             )
         ):
-            expanded_candidates = self.vector_store.search(
-                query_embedding,
-                top_k=candidate_limit + len(authoritative_candidates),
-                filters=filters,
+            expanded_candidates = search_lane(
+                normalized,
+                lane_limit=candidate_limit + len(authoritative_candidates),
+                lane_filters=filters,
             )
             candidates = self._merge_candidates(
                 authoritative_candidates, expanded_candidates
             )
         else:
             candidates = authoritative_candidates
+        lexical_compatibility_chunk_ids: set[str] = set()
+        compatible_categories = (
+            _intent_candidate_categories(analysis.intent, intent_query)
+            if lexical_fallback_active
+            else ()
+        )
+        for compatible_category in compatible_categories:
+            if category is not None and category.casefold() != compatible_category:
+                continue
+            category_candidates = search_lane(
+                intent_query,
+                lane_limit=candidate_limit,
+                lane_filters=SearchFilters(
+                    category=compatible_category,
+                    program=program,
+                    include_historical=include_historical,
+                    include_uncertain=include_uncertain,
+                    include_manual_review=include_manual_review,
+                    include_partial=include_partial,
+                ),
+            )
+            candidates = self._merge_candidates(category_candidates, candidates)
+            if lexical_fallback_active:
+                # Category selection is deterministic, but authority and the
+                # query/evidence compatibility gate below remain mandatory.
+                # Exempt only those compatible rows from dense-score cutoffs,
+                # whose numeric meaning does not exist during provider outage.
+                lexical_compatibility_chunk_ids.update(
+                    match.chunk.chunk_id for match in category_candidates
+                )
         exact_topic_chunk_ids: set[str] = set()
         exact_topic_category = _exact_topic_category(analysis.intent)
         if exact_topic_category is not None and (
@@ -351,10 +420,10 @@ class Retriever:
             # admission pages. ``partial`` is allowed only in this exact lane:
             # title-only captures provide the verified official destination
             # needed for an honest "current information unavailable" answer.
-            exact_topic_candidates = self.vector_store.search(
-                query_embedding,
-                top_k=candidate_limit,
-                filters=SearchFilters(
+            exact_topic_candidates = search_lane(
+                normalized,
+                lane_limit=candidate_limit,
+                lane_filters=SearchFilters(
                     category=exact_topic_category,
                     program=program,
                     include_historical=include_historical,
@@ -375,11 +444,10 @@ class Retriever:
         if scope_tokens:
             # Preserve explicit faculty, semester, year, or program qualifiers
             # that the canonical topic query intentionally omits.
-            scoped_embedding = self.embedder.embed_query(intent_query)
-            scoped_candidates = self.vector_store.search(
-                scoped_embedding,
-                top_k=candidate_limit,
-                filters=filters,
+            scoped_candidates = search_lane(
+                intent_query,
+                lane_limit=candidate_limit,
+                lane_filters=filters,
             )
             candidates = self._merge_candidates(scoped_candidates, candidates)
         exact_focus_chunk_ids: set[str] = set()
@@ -394,11 +462,10 @@ class Retriever:
                     if analysis.intent is QueryIntent.WAIVER
                     else "scholarships"
                 )
-                focus_embedding = self.embedder.embed_query(intent_query)
-                focus_candidates = self.vector_store.search(
-                    focus_embedding,
-                    top_k=candidate_limit,
-                    filters=SearchFilters(
+                focus_candidates = search_lane(
+                    intent_query,
+                    lane_limit=candidate_limit,
+                    lane_filters=SearchFilters(
                         category=category or focus_category,
                         program=program,
                     ),
@@ -449,11 +516,13 @@ class Retriever:
                 or not raw_is_known_alias
             )
         ):
-            raw_embedding = self.embedder.embed_query(raw_program_phrase)
-            raw_candidates = self.vector_store.search(
-                raw_embedding,
-                top_k=candidate_limit,
-                filters=SearchFilters(category=program_lane_category, program=program),
+            raw_candidates = search_lane(
+                raw_program_phrase,
+                lane_limit=candidate_limit,
+                lane_filters=SearchFilters(
+                    category=program_lane_category,
+                    program=program,
+                ),
             )
             candidates = self._merge_candidates(raw_candidates, candidates)
         # Keep the program resolved from the user's wording. Canonical intent
@@ -467,11 +536,13 @@ class Retriever:
             # pre-analysis program phrase filter out the requested faculty.
             program_phrase = _PROGRAM_CATALOG_QUERY
         if program_phrase is not None:
-            phrase_embedding = self.embedder.embed_query(program_phrase)
-            program_candidates = self.vector_store.search(
-                phrase_embedding,
-                top_k=candidate_limit,
-                filters=SearchFilters(category=program_lane_category, program=program),
+            program_candidates = search_lane(
+                program_phrase,
+                lane_limit=candidate_limit,
+                lane_filters=SearchFilters(
+                    category=program_lane_category,
+                    program=program,
+                ),
             )
             candidates = self._merge_candidates(program_candidates, candidates)
         resolved_catalog_program: Optional[str] = None
@@ -499,11 +570,10 @@ class Retriever:
         if program_list_query:
             faculty_focus = _catalog_faculty_focus(intent_query)
             if faculty_focus:
-                focus_embedding = self.embedder.embed_query(faculty_focus)
-                focus_candidates = self.vector_store.search(
-                    focus_embedding,
-                    top_k=candidate_limit,
-                    filters=SearchFilters(category=category, program=program),
+                focus_candidates = search_lane(
+                    faculty_focus,
+                    lane_limit=candidate_limit,
+                    lane_filters=SearchFilters(category=category, program=program),
                 )
                 candidates = self._merge_candidates(focus_candidates, candidates)
             named_faculty = (
@@ -595,7 +665,9 @@ class Retriever:
             preferred_categories=set(self._topic_category_bonuses(intent_query)),
             program_list_query=program_list_query,
             exact_compatibility_chunk_ids=exact_focus_chunk_ids,
-            threshold_exempt_chunk_ids=exact_topic_chunk_ids,
+            threshold_exempt_chunk_ids=(
+                exact_topic_chunk_ids | lexical_compatibility_chunk_ids
+            ),
         )
 
     @staticmethod
@@ -615,6 +687,66 @@ class Retriever:
             if previous is None or match.similarity_score > previous.similarity_score:
                 merged[match.chunk.chunk_id] = match
         return list(merged.values())
+
+    def _list_lexical_chunks(
+        self, filters: SearchFilters
+    ) -> List[KnowledgeChunk]:
+        """Reuse an immutable runtime index snapshot during provider outages."""
+
+        with self._lexical_cache_lock:
+            cached = self._lexical_chunks_cache.get(filters)
+        if cached is not None:
+            return cached
+        chunks = self.vector_store.list_chunks(filters=filters)
+        with self._lexical_cache_lock:
+            return self._lexical_chunks_cache.setdefault(filters, chunks)
+
+    @staticmethod
+    def _lexical_candidates(
+        query: str,
+        chunks: Sequence[KnowledgeChunk],
+        *,
+        top_k: int,
+    ) -> List[VectorMatch]:
+        """Rank already-authorized chunks without an external embedding call.
+
+        Scores measure explicit token coverage and exact normalized phrases in
+        source metadata/content. They are deliberately conservative: later
+        intent, program, faculty, audience, and claim-compatibility gates still
+        decide whether a chunk can support the answer.
+        """
+
+        query_normalized = normalize_program_text(query)
+        query_tokens = _normalized_match_tokens(query)
+        matches: List[VectorMatch] = []
+        for chunk in chunks:
+            searchable = "{} {} {} {} {}".format(
+                chunk.title,
+                chunk.category.replace("_", " "),
+                chunk.program or "",
+                chunk.faculty or "",
+                chunk.content,
+            )
+            searchable_normalized = normalize_program_text(searchable)
+            searchable_tokens = _normalized_match_tokens(searchable)
+            coverage = (
+                len(query_tokens & searchable_tokens) / len(query_tokens)
+                if query_tokens
+                else 0.0
+            )
+            exact_phrase = bool(
+                query_normalized
+                and re.search(
+                    rf"(?<![a-z0-9]){re.escape(query_normalized)}(?![a-z0-9])",
+                    searchable_normalized,
+                )
+            )
+            score = 1.0 if exact_phrase else coverage
+            matches.append(VectorMatch(chunk=chunk, similarity_score=score))
+        matches.sort(
+            key=lambda match: (-match.similarity_score, match.chunk.chunk_id)
+        )
+        return matches[:top_k]
 
     @staticmethod
     def _authority_rank(chunk: KnowledgeChunk) -> tuple[int, int]:
@@ -1384,6 +1516,61 @@ def _exact_topic_category(intent: Optional[QueryIntent]) -> Optional[str]:
         QueryIntent.FINANCIAL_AID: "financial_aid",
         QueryIntent.LIFE_INSURANCE: "life_insurance",
     }.get(intent)
+
+
+def _intent_candidate_categories(
+    intent: Optional[QueryIntent], query: str
+) -> tuple[str, ...]:
+    """Return stable evidence categories compatible with a classified intent.
+
+    These are schema routing labels, not admission facts. The result is used as
+    an additional candidate lane and never bypasses evidence compatibility.
+    """
+
+    if intent is QueryIntent.TUITION:
+        audience = tuition_audience(query)
+        if audience == "international":
+            return ("international_admission",)
+        if audience == "both":
+            return ("tuition_and_fees", "international_admission")
+        return ("tuition_and_fees",)
+    return {
+        QueryIntent.APPLICATION_PROCESS: ("admission_process",),
+        QueryIntent.ONLINE_APPLICATION: ("admission_application_process",),
+        QueryIntent.DOCUMENTS: ("required_admission_documents",),
+        QueryIntent.DIPLOMA_APPLICATION: ("admission_application_process",),
+        QueryIntent.SCHOLARSHIP: ("scholarships",),
+        QueryIntent.WAIVER: ("waivers",),
+        QueryIntent.PROGRAM_CATALOG: ("undergraduate_programs",),
+        QueryIntent.PROGRAM_INFO: ("undergraduate_programs",),
+        QueryIntent.ELIGIBILITY: ("undergraduate_programs",),
+        QueryIntent.DEADLINE: (
+            "admission_notices",
+            "current_admission_information",
+            "admission_overview",
+        ),
+        QueryIntent.CONTACT: ("admission_contact_information",),
+        QueryIntent.INTERNATIONAL: ("international_admission",),
+        QueryIntent.INTERNATIONAL_SCHOLARSHIP: ("international_scholarships",),
+        QueryIntent.ADMISSION_TEST_SCHEDULE: (
+            "admission_overview",
+            "admission_notices",
+            "current_admission_information",
+        ),
+        QueryIntent.ADMISSION_TEST_SEAT_PLAN: (
+            "admission_test_result",
+            "admission_overview",
+            "admission_notices",
+        ),
+        QueryIntent.ADMISSION_TEST_RESULT: ("admission_test_result",),
+        QueryIntent.CREDIT_TRANSFER: ("credit_transfer_guidelines",),
+        QueryIntent.GUARDIAN_GUIDELINES: ("guardian_guidelines",),
+        QueryIntent.PAYMENT_GUIDELINES: ("payment_guidelines",),
+        QueryIntent.WAIVER_CALCULATOR: ("waiver_calculator",),
+        QueryIntent.FINANCIAL_AID: ("financial_aid",),
+        QueryIntent.LIFE_INSURANCE: ("life_insurance",),
+        QueryIntent.ADMISSION_OVERVIEW: ("admission_overview",),
+    }.get(intent, ())
 
 
 def _normalized_match_tokens(text: str) -> set[str]:

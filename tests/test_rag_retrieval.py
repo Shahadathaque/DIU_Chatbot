@@ -7,6 +7,7 @@ from typing import List, Sequence
 import pytest
 
 from rag.config import RagSettings
+from rag.embeddings import EmbeddingUnavailableError
 from rag.query_processing import QueryIntent, analyze_query
 from rag.retriever import (
     Retriever,
@@ -69,6 +70,14 @@ class _AidFocusEmbedder:
         if query.casefold() == "female waiver":
             return [0.0, 1.0, 0.0]
         return [1.0, 0.0, 0.0]
+
+
+class _UnavailableEmbedder(FakeEmbedder):
+    """Hosted-provider fixture that is rate limited for every query."""
+
+    def embed_query(self, query: str) -> List[float]:
+        self.queries.append(query)
+        raise EmbeddingUnavailableError("embedding provider returned HTTP 429")
 
 
 def _store() -> InMemoryVectorStore:
@@ -924,6 +933,110 @@ def test_bare_and_natural_faculty_queries_filter_every_catalog_faculty(
     results = retriever.retrieve(query, top_k=10)
 
     assert {result.chunk.chunk_id for result in results} == expected_ids
+
+
+def test_embedding_outage_uses_authoritative_lexical_faculty_catalog_fallback() -> None:
+    rows = [
+        (
+            "graduate-digital-education",
+            "Master of Teaching in Digital Education",
+            "Graduate Studies",
+        ),
+        (
+            "graduate-postgraduate-diploma",
+            "Postgraduate Diploma of Teaching in Digital Education",
+            "Graduate Studies",
+        ),
+        (
+            "engineering-civil",
+            "B.Sc. in Civil Engineering",
+            "Engineering",
+        ),
+    ]
+    chunks = [
+        replace(
+            replace(
+                knowledge_chunk(
+                    chunk_id,
+                    source_id="DIU-PROG-001",
+                    content=f"{program} | {faculty}",
+                    category="undergraduate_programs",
+                    program=program,
+                ),
+                faculty=faculty,
+            ),
+            content_type="table",
+        )
+        for chunk_id, program, faculty in rows
+    ]
+    store = _store()
+    store.upsert_chunks(chunks, [[1.0, 0.0] for _chunk in chunks])
+    retriever = Retriever(
+        _UnavailableEmbedder(),
+        store,
+        max_results_per_source=10,
+    )
+
+    results = retriever.retrieve("Graduate Studies", top_k=10)
+
+    assert {result.chunk.chunk_id for result in results} == {
+        "graduate-digital-education",
+        "graduate-postgraduate-diploma",
+    }
+    assert all(result.similarity_score == 1.0 for result in results)
+
+
+def test_embedding_outage_preserves_exact_program_and_topic_compatibility() -> None:
+    itm = replace(
+        knowledge_chunk(
+            "itm-program",
+            source_id="DIU-PROG-001",
+            content=(
+                "B.Sc. in Information Technology & Management (ITM) | "
+                "Science and Information Technology"
+            ),
+            category="undergraduate_programs",
+            program="B.Sc. in Information Technology & Management (ITM)",
+        ),
+        faculty="Science and Information Technology",
+        content_type="table",
+    )
+    civil = replace(
+        knowledge_chunk(
+            "civil-program",
+            source_id="DIU-PROG-001",
+            content="B.Sc. in Civil Engineering | Engineering",
+            category="undergraduate_programs",
+            program="B.Sc. in Civil Engineering",
+        ),
+        faculty="Engineering",
+        content_type="table",
+    )
+    insurance = replace(
+        knowledge_chunk(
+            "life-insurance",
+            source_id="DIU-LIFE-001",
+            content="Verified DIU student life insurance information.",
+            category="life_insurance",
+        ),
+        title="Life Insurance",
+    )
+    store = _store()
+    store.upsert_chunks([itm, civil, insurance], [[1.0, 0.0]] * 3)
+    retriever = Retriever(
+        _UnavailableEmbedder(),
+        store,
+        max_results_per_source=10,
+    )
+
+    itm_results = retriever.retrieve("Information Technology", top_k=5)
+    insurance_results = retriever.retrieve("life insurance", top_k=5)
+
+    assert [result.chunk.chunk_id for result in itm_results] == ["itm-program"]
+    assert [result.chunk.chunk_id for result in insurance_results] == [
+        "life-insurance"
+    ]
+    assert retriever.retrieve("random unrelated question", top_k=5) == []
 
 
 def test_bdt_tuition_query_excludes_usd_and_program_catalog_evidence() -> None:

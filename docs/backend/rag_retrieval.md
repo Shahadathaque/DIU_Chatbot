@@ -275,6 +275,15 @@ evidence summary with the same official citations instead of a transient 503.
 Empty or incompatible retrieval still returns the normal insufficient-information
 response; this fallback does not bypass retrieval thresholds or evidence gates.
 
+If the hosted embedding provider is rate limited or temporarily unreachable,
+the retriever switches to a provider-independent lexical/metadata lane over the
+same authorized knowledge chunks. Stable intent categories, exact program and
+faculty metadata, degree level, audience, authority, and evidence-compatibility
+checks remain enforced. A short circuit breaker avoids retrying a known-unavailable
+provider on every query, while a cached immutable chunk snapshot avoids repeated
+full-database reads during the outage. Dense retrieval resumes automatically after
+the cooldown; no global threshold or admission fact is changed by this fallback.
+
 ## Local development fallback
 
 When PostgreSQL is unavailable, set:

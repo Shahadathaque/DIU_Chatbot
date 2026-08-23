@@ -148,6 +148,15 @@ class VectorStore(Protocol):
 
         ...
 
+    def list_chunks(
+        self,
+        *,
+        filters: Optional[SearchFilters] = None,
+    ) -> List[KnowledgeChunk]:
+        """Return eligible chunks for a provider-independent retrieval lane."""
+
+        ...
+
     def count(self) -> int:
         """Return the number of indexed chunks."""
 
@@ -589,6 +598,41 @@ class PgVectorStore:
             for row in rows
         ]
 
+    def list_chunks(
+        self,
+        *,
+        filters: Optional[SearchFilters] = None,
+    ) -> List[KnowledgeChunk]:
+        """Return eligible authoritative chunks without evaluating vectors.
+
+        This read-only path lets retrieval degrade safely when a hosted
+        embedding provider is temporarily unavailable or rate limited.  It
+        applies the same database-side authority and metadata restrictions as
+        semantic search; ranking remains the retriever's responsibility.
+        """
+
+        self._ensure_setup()
+        resolved_filters = filters or SearchFilters()
+        psycopg, sql, dict_row, _jsonb, _vector, _register_vector = (
+            _load_pg_dependencies()
+        )
+        table = sql.Identifier(self.table_name)
+        where_sql, parameters = _pg_filter_clause(resolved_filters, sql)
+        fields = sql.SQL(", ").join(sql.Identifier(field) for field in _CHUNK_FIELDS)
+        statement = sql.SQL(
+            "SELECT {} FROM {} WHERE {} ORDER BY chunk_id ASC"
+        ).format(fields, table, where_sql)
+        try:
+            with self._connection(psycopg, dict_row) as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(statement, parameters)
+                    rows = cursor.fetchall()
+        except Exception as error:
+            raise VectorStoreError(
+                "Could not list PostgreSQL/pgvector chunks: {}".format(error)
+            ) from error
+        return [_chunk_from_mapping(row) for row in rows]
+
     def count(self) -> int:
         """Return the current PostgreSQL row count."""
 
@@ -864,6 +908,20 @@ class InMemoryVectorStore:
         matches.sort(key=lambda match: (-match.similarity_score, match.chunk.chunk_id))
         return matches[:limit]
 
+    def list_chunks(
+        self,
+        *,
+        filters: Optional[SearchFilters] = None,
+    ) -> List[KnowledgeChunk]:
+        resolved_filters = filters or SearchFilters()
+        with self._lock:
+            chunks = [
+                chunk
+                for chunk, _embedding in self._entries.values()
+                if _chunk_is_eligible(chunk, resolved_filters)
+            ]
+        return sorted(chunks, key=lambda chunk: chunk.chunk_id)
+
     def count(self) -> int:
         with self._lock:
             return len(self._entries)
@@ -943,6 +1001,14 @@ class LocalVectorStore(InMemoryVectorStore):
     ) -> List[VectorMatch]:
         self.setup()
         return super().search(query_embedding, top_k=top_k, filters=filters)
+
+    def list_chunks(
+        self,
+        *,
+        filters: Optional[SearchFilters] = None,
+    ) -> List[KnowledgeChunk]:
+        self.setup()
+        return super().list_chunks(filters=filters)
 
     def count(self) -> int:
         self.setup()

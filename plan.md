@@ -804,3 +804,14 @@ scope), record it here with a short reason._
   variants, 60/60 adversarial cases, 211/211 tuition variants, and 25/25 faculty
   catalog variants covering all 7 faculties and all 52 cleaned program rows in
   both deterministic and configured hosted-retrieval modes.
+- **2026-08-24** — Embedding-provider outage resilience completed. Hosted 429,
+  5xx, and exhausted network failures now open a bounded circuit breaker and
+  degrade to cached, provider-independent lexical/metadata retrieval over the
+  same authority-filtered pgvector rows. Intent-scoped candidate lanes preserve
+  exact program/faculty, degree-level, audience, and evidence compatibility, so
+  provider quota exhaustion no longer turns a supported chat request into a
+  public 500. Verification passed with 627 backend tests, 36 frontend tests,
+  84/84 admission variants in both deterministic and configured hosted modes,
+  60/60 adversarial query cases, 211/211 tuition variants across all 50 tuition
+  programs, and 25/25 faculty queries covering all 7 faculties and 52 catalog
+  programs in both local and hosted retrieval.

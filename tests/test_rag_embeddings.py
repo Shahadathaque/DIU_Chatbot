@@ -181,6 +181,66 @@ def test_openai_compatible_embedder_retries_transient_http_failures() -> None:
     assert sleeps == [0.25]
 
 
+def test_openai_compatible_embedder_429_opens_short_circuit_without_retry() -> None:
+    attempts = 0
+    now = [100.0]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal attempts
+        attempts += 1
+        return httpx.Response(429, headers={"Retry-After": "30"})
+
+    embedder = OpenAICompatibleEmbedder(
+        api_base="https://model.example/v1",
+        api_key=None,
+        model_name="hosted-embedding",
+        dimension=2,
+        max_retries=5,
+        retry_backoff=1.0,
+        unavailable_cooldown=60.0,
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+        sleeper=lambda _seconds: pytest.fail("429 must not sleep and retry"),
+        monotonic=lambda: now[0],
+    )
+
+    with pytest.raises(EmbeddingUnavailableError, match="HTTP 429"):
+        embedder.embed_query("DIU admission")
+    with pytest.raises(EmbeddingUnavailableError, match="temporarily unavailable"):
+        embedder.embed_query("DIU programs")
+    assert attempts == 1
+
+    now[0] = 161.0
+    with pytest.raises(EmbeddingUnavailableError, match="HTTP 429"):
+        embedder.embed_query("DIU tuition")
+    assert attempts == 2
+
+
+def test_openai_compatible_embedder_network_failure_opens_short_circuit() -> None:
+    attempts = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal attempts
+        attempts += 1
+        raise httpx.ConnectError("provider unavailable", request=request)
+
+    embedder = OpenAICompatibleEmbedder(
+        api_base="https://model.example/v1",
+        api_key=None,
+        model_name="hosted-embedding",
+        dimension=2,
+        max_retries=1,
+        retry_backoff=0.0,
+        unavailable_cooldown=60.0,
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    with pytest.raises(EmbeddingUnavailableError, match="ConnectError"):
+        embedder.embed_query("DIU admission")
+    with pytest.raises(EmbeddingUnavailableError, match="temporarily unavailable"):
+        embedder.embed_query("DIU programs")
+    assert attempts == 2
+
+
 def test_create_embedder_selects_hosted_backend() -> None:
     settings = RagSettings(
         _env_file=None,
