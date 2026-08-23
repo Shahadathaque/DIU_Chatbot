@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from typing import Any, Dict, List, Optional, Sequence
 
-from backend.core.errors import ApiError
 from backend.models.chat import ChatResponse, ChatSource, Confidence, Language
 from rag.faculty_resolution import matched_faculty_phrase
 from rag.generator import Generator, GeneratorUnavailableError
@@ -18,6 +18,8 @@ from rag.program_resolution import (
 from rag.retriever import Retriever, _matched_program_phrase
 from rag.query_processing import QueryIntent, analyze_query, tuition_audience
 
+
+LOGGER = logging.getLogger(__name__)
 
 _INTRO_BY_LANGUAGE: Dict[Language, str] = {
     "en": (
@@ -382,12 +384,16 @@ class ChatService:
         messages = build_grounded_messages(message, language, results)
         try:
             answer = self._generator.generate(messages)
-        except GeneratorUnavailableError as error:
-            raise ApiError(
-                status_code=503,
-                code="service_unavailable",
-                message="The language generation service is temporarily unavailable.",
-            ) from error
+        except GeneratorUnavailableError:
+            # Retrieval has already passed the authority and compatibility
+            # gates. Preserve availability during provider timeout/quota
+            # incidents by returning the existing source-grounded summary;
+            # never turn a verified answer into a transient 503 solely because
+            # optional language generation is unavailable.
+            LOGGER.warning(
+                "Generator unavailable; returning verified evidence summary"
+            )
+            return self._evidence_response(results, language=language)
         if not answer.strip():
             return self._evidence_response(results, language=language)
         return ChatResponse(

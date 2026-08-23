@@ -542,7 +542,7 @@ def test_generated_empty_answer_falls_back_to_evidence_summary() -> None:
     _reset_overrides()
 
 
-def test_generator_unavailable_maps_to_503() -> None:
+def test_generator_unavailable_falls_back_to_grounded_evidence() -> None:
     retriever = _FakeRetriever(
         {
             "What documents are required?": [
@@ -564,10 +564,13 @@ def test_generator_unavailable_maps_to_503() -> None:
         json={"message": "What documents are required?", "language": "en"},
     )
 
-    assert response.status_code == 503
+    assert response.status_code == 200
     body = response.json()
-    assert body["error"]["code"] == "service_unavailable"
-    assert "temporarily unavailable" in body["error"]["message"]
+    assert "Evidence retrieved from official DIU sources" in body["answer"]
+    assert "Verified DIU document requirements evidence." in body["answer"]
+    assert body["confidence"] == "high"
+    assert len(body["sources"]) == 1
+    assert body["sources"][0]["url"].startswith("https://")
     _reset_overrides()
 
 

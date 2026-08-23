@@ -269,6 +269,12 @@ The chat suggestions correspond directly to collected official records:
 API citations are created only from the retrieved chunks' stored title and
 official source URL. The generator cannot add sources to the response.
 
+If the optional language-generation provider is temporarily unavailable after
+verified evidence has been retrieved, chat returns the deterministic grounded
+evidence summary with the same official citations instead of a transient 503.
+Empty or incompatible retrieval still returns the normal insufficient-information
+response; this fallback does not bypass retrieval thresholds or evidence gates.
+
 ## Local development fallback
 
 When PostgreSQL is unavailable, set:

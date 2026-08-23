@@ -73,8 +73,10 @@ evaluation artifact is absent locally, so its 41 artifact-dependent integrations
 remain intentionally skipped. The complete backend suite now passes 621 tests.
 Faculty names that overlap partial program aliases remain faculty catalog queries
 through the conversation resolver, while faculty-scoped schedule questions retain
-their more specific schedule intent. The current repair is verified and authorized
-for production deployment.
+their more specific schedule intent. When optional generation is rate-limited or
+temporarily unavailable after compatible evidence is retrieved, chat now preserves
+availability with the deterministic grounded evidence summary and official
+citations. The current repair is verified and authorized for production deployment.
 
 ### Next
 
@@ -796,7 +798,9 @@ scope), record it here with a short reason._
   complete faculty audit. The conversation resolver also preserves faculty scope
   when a faculty name overlaps a program alias, and retriever faculty-table
   filtering is limited to catalog intent so admission schedules keep their
-  specific evidence lane. Verification passed with 621 backend tests, 84/84 hosted admission
+  specific evidence lane. Generator timeout/quota failures now fall back to the
+  already verified evidence summary instead of returning a chat-level 503.
+  Verification passed with 621 backend tests, 84/84 hosted admission
   variants, 60/60 adversarial cases, 211/211 tuition variants, and 25/25 faculty
   catalog variants covering all 7 faculties and all 52 cleaned program rows in
   both deterministic and configured hosted-retrieval modes.
